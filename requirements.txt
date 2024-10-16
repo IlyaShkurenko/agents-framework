@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pymongo
+openai
+pydantic
+typing
+langchain-core
+pyee
+runware

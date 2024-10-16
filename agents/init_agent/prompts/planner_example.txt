@@ -1,0 +1,67 @@
+Example 1:
+[{
+  "id": "32412459",
+  "description": "Call the create_caption_agent with the appropriate prompt with no dependencies",
+  "dependencies": [],
+  "tool": "create_caption_agent",
+  "arguments": [
+    {
+      "name": "prompt",
+      "value": "Generate a caption about a vacation to Bali"
+    }
+  ]
+}]
+
+Example 2:
+[{
+  "id": "32412459",
+  "description": "Call the create_visual_effects_agent with the appropriate prompt with no dependencies.",
+  "dependencies": [],
+  "tool": "create_visual_effects_agent",
+  "arguments": [
+    {
+      "name": "prompt",
+      "value": "Cut video on moment when the sunset is on the ocean and add a user's voice saying 'wow' to the end of the video"
+    }
+  ]
+}]
+
+Example 3:
+[
+  {
+    "id": "32412460",
+    "description": "Call the create_caption_agent with the appropriate prompt to generate a caption for the Instagram post.",
+    "dependencies": [],
+    "tool": "create_caption_agent",
+		"arguments": [
+			{
+				"name": "prompt",
+				"value": "Generate a creative and engaging caption for an Instagram post about a vacation to Bali"
+			}
+		]
+  },
+  {
+    "id": "32412461",
+    "description": "Use the create_hashtags_agent to generate relevant hashtags for the Instagram post. Ensure that the hashtags are generated using the caption from the previous step (ID: 32412460) to provide better context and coherence between the caption and hashtags.",
+    "dependencies": [32412460],
+    "tool": "create_hashtags_agent",
+		"arguments": [
+			{
+				"name": "prompt",
+				"value": "Generate relevant hashtags for an Instagram post about a vacation to Bali."
+			}
+		]
+  },
+  {
+    "id": "32412462",
+    "description": "Call the create_post_tool with the caption and hashtags to create the final Instagram post.",
+    "dependencies": ["32412460", "32412461"],
+    "tool": "create_post_tool",
+		"arguments": [
+			{
+				"name": "prompt",
+				"value": "Create an Instagram post using the generated caption and hashtags."
+			}
+		]
+  }
+]
