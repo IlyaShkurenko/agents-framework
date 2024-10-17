@@ -27,7 +27,7 @@ def create_dynamic_response_model(include_overview: bool = False):
     if include_overview:
         return create_model(
             'AssistantResponseWithOverview',
-            overview = (str, Field(..., description="A short summary of the planned actions, starting with 'I will...' and describing the exact steps clearly and concisely, as if directly addressing the user. Avoid using phrases like 'the user' and do not introduce opinions, tools, assumptions, or extra details beyond the original request. Keep the response within 3-4 sentences, and conclude by asking for approval or if any changes are needed.")),
+            overview = (str, Field(..., description="A short summary of the planned actions, starting with 'I will...' and clearly describing the exact steps, indicating which actions will be done in parallel and which step-by-step. Use a conversational tone without referring to the user indirectly or adding opinions, tools, assumptions, or extra details beyond the request. Keep the response within 3-4 sentences, and conclude by asking for approval or any needed changes.")),
             __base__=AssistantResponse
         )
     else:
@@ -44,15 +44,13 @@ class Planner:
                  include_overview: bool = False,
                  replan: bool = False,
                  examples: str = "",
-                 planner_agent_name: str = "planner",
                  model: str = "gpt-4o"):
         self.tools = tools
         self.include_overview = include_overview
         self.replan = replan
         self.model = model
         self.examples = examples
-        self.planner_agent_name = planner_agent_name
-        self.openai_service = OpenAIService(agent_name=self.planner_agent_name)
+        self.openai_service = OpenAIService(agent_name='planner')
 
     async def create_plan(self, conversation_history: List, user_requirements: dict) -> tuple[List[dict], dict]:
         """

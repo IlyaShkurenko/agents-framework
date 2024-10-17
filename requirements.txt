@@ -7,3 +7,5 @@ typing
 langchain-core
 pyee
 runware
+motor
+neo4j

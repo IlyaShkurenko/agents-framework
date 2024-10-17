@@ -1,54 +1,3 @@
-# # app.py
-
-# from fastapi import FastAPI, Request
-# from fastapi.middleware.cors import CORSMiddleware  # Импортируем CORS Middleware
-# from pydantic import BaseModel
-# from core.mediator import Mediator
-# from agents.init_agent.main import InitAgent
-# from agents.caption_agent.main import CaptionAgent
-# from rich.traceback import install
-# install()
-
-# app = FastAPI()
-
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-# # Initialize the mediator
-# mediator = Mediator()
-
-# # Register agents
-# caption_agent = CaptionAgent(mediator)
-# init_agent = InitAgent(mediator, [caption_agent])
-
-# mediator.register_agent(init_agent)
-# mediator.register_agent(caption_agent)
-
-# class MessageRequest(BaseModel):
-#     clientId: str
-#     message: str
-#     chatId: str
-
-# @app.post("/message")
-# async def handle_send_message(request: MessageRequest):
-#     client_id = request.clientId
-#     message = request.message
-#     chat_id = request.chatId
-#     response = mediator.handle_message(client_id, chat_id, message)
-#     return {"response": response}
-
-# @app.get("/messages")
-# async def handle_get_messages(request: Request):  # Accepting the Request object
-#     clientId = request.query_params.get("clientId")
-#     chatId = request.query_params.get("chatId")
-#     response = mediator.get_conversation_history(clientId, chatId)
-#     return {"response": response}
-
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
@@ -139,6 +88,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 message_type = parsed_data.get('type')
                 message_content = parsed_data.get('content')
                 chat_id = parsed_data.get('chatId')
+                mediator.set_client_data(client_id, chat_id)
 
                 if message_type == "message":
                     try:
@@ -167,3 +117,180 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+# from pprint import pprint
+# import random
+
+# class Test:
+#     def __init__(self):
+#         self.agent_plans = []
+#         self.default_agent = "init_agent"
+
+#     def update_agent_plans(self, agent_name: str, plan: list[dict], description: str):
+#         # If the agent_name is the default agent and the list is empty, add the default agent entry
+#             if agent_name == self.default_agent and not self.agent_plans:
+#                 self.agent_plans.extend(plan)
+
+#                 default_agent_entry = {
+#                     "tool": self.default_agent,
+#                     "description": description,
+#                     "id": random.randint(10**7, 10**8 - 1),
+#                     "arguments": [],
+#                     "dependencies": [plan[-1]['id']]
+#                 }
+#                 self.agent_plans.append(default_agent_entry)
+#                 return
+
+#             # Find the index of the first element where 'tool' matches agent_name
+#             print('before')
+#             pprint(agent_name)
+#             found_index = next((i for i, task in enumerate(self.agent_plans) if task['tool'] == agent_name), None)
+#             print('found_index', found_index)
+#             dependencies_to_remove = set([])
+#             if found_index is not None:
+#                 # Update dependencies for the agent
+#                 last_task = plan[-1]
+            
+#                 matching_task = next((task for task in self.agent_plans if task['tool'] == last_task['tool']), None)
+#                 # Insert the new plan at the position of the old one
+#                 self.agent_plans[found_index:found_index] = plan
+#                 if matching_task:
+#                     matching_task_id = matching_task['id']
+#                     print('matching_task_id', matching_task_id)
+#                     dependencies_to_remove = set([matching_task_id])
+#                     def collect_dependencies(task_id):
+#                         for task in self.agent_plans:
+#                             if task['id'] == task_id:
+#                                 dependencies_to_remove.update(task.get('dependencies', []))
+#                                 for dep_id in task.get('dependencies', []):
+#                                     collect_dependencies(dep_id)
+
+#                     collect_dependencies(matching_task_id)
+
+#                     print('dependencies_to_remove', dependencies_to_remove)
+#                     dependencies = self.agent_plans[found_index + len(plan)].get('dependencies', [])
+#                     if matching_task_id in dependencies:
+#                         dependencies.remove(matching_task_id)
+
+#                 self.agent_plans[found_index + len(plan)]['dependencies'].append(last_task['id'])
+
+#             else:
+#                 # If the agent doesn't exist, simply append the plan at the end
+#                 self.agent_plans.extend(plan)
+            
+#             if dependencies_to_remove:
+#                 self.agent_plans = [task for task in self.agent_plans if task['id'] not in dependencies_to_remove]
+
+
+
+# test = Test()
+
+# plan = [
+#             {
+#                 "id": "32412460",
+#                 "description": "Call the create_caption_agent with the appropriate prompt to generate a caption for the Instagram post.",
+#                 "dependencies": [],
+#                 "tool": "create_caption_agent",
+#                 "arguments": [
+#                     {
+#                         "name": "prompt",
+#                         "value": "Generate a creative and engaging caption for an Instagram post about a vacation to Bali"
+#                 }
+#             ]
+#         },
+#         {
+#             "id": "32412461",
+#             "description": "Use the create_hashtags_agent to generate relevant hashtags for the Instagram post. Ensure that the hashtags are generated using the caption from the previous step (ID: 32412460) to provide better context and coherence between the caption and hashtags.",
+#             "dependencies": [32412460],
+#             "tool": "create_hashtags_agent",
+#             "arguments": [
+# 			    {
+#                         "name": "prompt",
+#                         "value": "Generate relevant hashtags for an Instagram post about a vacation to Bali."
+#                     }
+#                 ]
+#             },
+#             {
+#                 "id": "32412462",
+#                 "description": "Call the create_post_tool with the caption and hashtags to create the final Instagram post.",
+#                 "dependencies": ["32412460", "32412461"],
+#                 "tool": "create_post_tool",
+#                 "arguments": [
+#                     {
+#                         "name": "prompt",
+#                         "value": "Create an Instagram post using the generated caption and hashtags."
+#                     }
+#                 ]
+#             }
+# ]
+
+# test.update_agent_plans("init_agent", plan, "Create a post")
+# pprint(test.agent_plans)
+
+# print('New plan')
+
+# new_plan = [
+#     {
+#                 "id": "11111111",
+#                 "description": "Call the create_caption_tool",
+#                 "dependencies": [],
+#                 "tool": "create_caption_tool",
+#                 "arguments": [
+#                     {
+#                         "name": "prompt",
+#                         "value": "somevalue"
+#                 }
+#         ]
+#     },
+# ]
+# test.update_agent_plans("create_caption_agent", new_plan, "Create a post")
+# pprint(test.agent_plans)
+
+# print('New plan hashtags')
+
+# new_plan = [
+#     {
+#                 "id": "15151515",
+#                 "description": "Call the create_hashtags_tool_2",
+#                 "dependencies": [],
+#                 "tool": "create_hashtags_tool_2",
+#                 "arguments": [
+#                     {
+#                         "name": "prompt",
+#                         "value": "somevalue"
+#                 }
+#         ]
+#     },
+#     {
+#                 "id": "22222222",
+#                 "description": "Call the create_hashtags_tool",
+#                 "dependencies": ["15151515"],
+#                 "tool": "create_hashtags_tool",
+#                 "arguments": [
+#                     {
+#                         "name": "prompt",
+#                         "value": "somevalue"
+#                 }
+#         ]
+#     },
+# ]
+# test.update_agent_plans("create_hashtags_agent", new_plan, "Create a post")
+# pprint(test.agent_plans)
+
+# print('New plan hashtags 2')
+
+# new_plan = [
+#     {
+#                 "id": "33333333",
+#                 "description": "Call the create_hashtags_tool",
+#                 "dependencies": [],
+#                 "tool": "create_hashtags_tool",
+#                 "arguments": [
+#                     {
+#                         "name": "prompt",
+#                         "value": "somevalue"
+#                 }
+#         ]
+#     },
+# ]
+# test.update_agent_plans("create_hashtags_agent", new_plan, "Create a post")
+# pprint(test.agent_plans)
