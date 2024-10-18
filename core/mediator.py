@@ -1,9 +1,11 @@
 # core/mediator.py
 
+import asyncio
 import random
 from typing import Any, List, Optional, Union
 from core.base_agent import BaseAgent
 from models.mediator_state_model import MediatorStateModel
+from models.task_state_model import TasksStateModel
 from services.mongo_service import MongoService
 from pyee.asyncio import AsyncIOEventEmitter
 import json
@@ -27,6 +29,9 @@ class Mediator:
         self.agent_plans = []
         self.agents_tasks = {}
         self.current_agent_name = None
+        self.client_id = None
+        self.chat_id = None
+        self.dependency_tree = {}
 
     def set_client_data(self, client_id: str, chat_id: str):
         """
@@ -37,6 +42,7 @@ class Mediator:
             chat_id (str): The unique chat identifier.
         """
         self.mediator_state_model = MediatorStateModel(client_id, chat_id, self.default_agent)
+        self.mediator_tasks_state_model = TasksStateModel(client_id, chat_id)
 
     def register_agent(self, agent: BaseAgent):
         """
@@ -124,6 +130,10 @@ class Mediator:
             agent_name (str): The agent's name.
             agent_description (str): Description of the agent.
         """
+        #We need to add the last agent task to the dependencies of the previous agent to connect them
+        agent_name = self.call_stack[-1]
+        agent = self.agents.get(agent_name)
+        agent.add_agent_task_to_dependencies(plan[-1]['id'])
         # Remove the agent's previous actions from the plan and the graph
         start_time = time.time()
         self.neo4j_service.clear_nodes_with_connections()
@@ -133,7 +143,7 @@ class Mediator:
         # self.neo4j_service.delete_agent_actions(agent_name)
         start_time = time.time()
         self.update_agent_plans(agent_name, plan, summary)
-        print('Plans:')
+        print("\033[31mPlans:\033[0m")
         pprint(self.agent_plans)
         print('task id',self.get_agent_id_by_name(agent_name))
         # self.neo4j_service.create_or_update_agent(agent_name, self.agents[agent_name].description, summary, task_id=self.get_agent_id_by_name(agent_name))
@@ -173,7 +183,7 @@ class Mediator:
                 # if is_agent:
                 #     self.neo4j_service.create_relationship(tool_name, dep_tool_name, "USES")
 
-    async def handle_message(self, client_id: str, chat_id: str, message: str):
+    async def handle_message(self, client_id: str, chat_id: str, message: str) -> str:
         """
         Handles incoming messages from clients.
 
@@ -187,29 +197,178 @@ class Mediator:
         """
         if not self.mediator_state_model:
             raise ValueError("Client data not set")
-        
-        # if not self.call_stack:
-        #     self.current_agent_name = await self.get_current_agent_name()
-        #     self.call_stack.append(self.current_agent_name)
 
+        self.client_id = client_id
+        self.chat_id = chat_id
+
+        # If the call stack is empty, get the current agent and push it onto the stack
+        if not self.call_stack:
+            await self.initialize_call_stack()
+        # Execute the next agent in the stack
+        return await self.execute_next_in_stack(message)
+
+    async def initialize_call_stack(self):
+        """Initializes the call stack with the current agent if it is empty."""
         start_time = time.time()
-        current_agent_name = await self.mediator_state_model.get_current_agent()
+        self.current_agent_name = await self.mediator_state_model.get_current_agent()
+        self.call_stack.append(self.current_agent_name)
+        print("\033[31mStack initialized:\033[0m")
+        pprint(self.call_stack)
         end_time = time.time()
         print(f"Time taken to get current agent: {end_time - start_time} seconds")
-        agent: Union[BaseAgent, None] = self.agents.get(current_agent_name)
+
+    async def execute_next_in_stack(self, message: str) -> str:
+        """
+        Triggers the execution of the top agent on the stack.
+
+        Args:
+            message (str): The message to be processed by the agent.
+
+        Returns:
+            str: The response from the executed agent.
+        """
+        if not self.call_stack:
+            return "No agents in the stack."
+
+        agent_name = self.call_stack[-1]
+        agent = self.agents.get(agent_name)
 
         if not agent:
-            raise ValueError(f"Agent {current_agent_name} not found")
+            raise ValueError(f"Agent {agent_name} not found")
+
+        # Set client data in the agent
+        await self.set_agent_client_data(agent)
+        print('setting current agent', agent_name)
+        asyncio.create_task(self.mediator_state_model.set_current_agent(agent_name))
+
+        # Execute the agent's task
+        response = await self.run_agent_task(agent, message)
+
+        # If more agents remain, execute the next one
+        # if self.call_stack:
+        #     return await self.execute_next_in_stack(message)
+
+        return response
+
+    async def set_agent_client_data(self, agent):
+        """Sets the client data for the given agent."""
         start_time = time.time()
-        await agent.set_client_data(client_id, chat_id)
+        await agent.set_client_data(self.client_id, self.chat_id)
         end_time = time.time()
         print(f"Time taken to set client data: {end_time - start_time} seconds")
+
+    async def run_agent_task(self, agent, message: str) -> str:
+        """Runs the given agent's task and removes it from the stack."""
         start_time = time.time()
+        print('before execute')
         response = await agent.execute(message=message)
+        print('after execute')
         end_time = time.time()
         print(f"Time taken to execute agent: {end_time - start_time} seconds")
         return response
     
+    def on_agent_execute(self, agent_name: str):
+        """
+        Called when the agent is executed.
+        """
+        for i, agent in enumerate(self.call_stack):
+            if agent == agent_name:
+                self.call_stack.pop(i)
+                print(f"Removed {agent_name} from the call stack.")
+                return 
+        print(f"Agent {agent_name} not found in the call stack.")
+        
+    async def add_agent_to_call_stack(self, parent_agent: str, agent_name: str, task_id: str, message: str):
+        """
+        Adds a new agent to the call stack and triggers its execution.
+
+        Args:
+            agent_name (str): The name of the agent to add.
+            message (str): The message to pass to the agent.
+        """
+        if agent_name not in self.agents:
+            raise ValueError(f"Agent {agent_name} not registered.")
+
+        self.call_stack.append(agent_name)
+        print("\033[31mNew call stack after adding agent:\033[0m")
+        pprint(self.call_stack)
+
+        # Add the agent to the dependency tree
+        if parent_agent == self.default_agent:
+            # If it's the first agent, initialize the root of the tree
+            self.initialize_dependency_tree(agent_name)
+            print("\033[31mDependency tree after initialization:\033[0m")
+            pprint(self.dependency_tree)
+        else:
+            # Otherwise, add the agent as a dependency of the parent agent
+            self.add_dependency(parent_agent, agent_name, task_id)
+            print("\033[31mDependency tree after adding dependency:\033[0m")
+            pprint(self.dependency_tree)
+
+        await self.handle_message(self.client_id, self.chat_id, message)
+
+    def add_dependency(self, parent_agent: str, agent_name: str, task_id: str):
+        """
+        Adds a new agent as a dependency of the specified parent agent.
+
+        Args:
+            parent_agent (str): The name of the parent agent.
+            agent_name (str): The name of the new agent.
+            task_id (str): The task ID associated with the new agent.
+        """
+        parent_node = self.find_node_in_tree(self.dependency_tree, parent_agent)
+        if not parent_node:
+            raise ValueError(f"Parent agent {parent_agent} not found in the dependency tree.")
+
+        # Add the new agent as a dependency of the parent agent
+        parent_node["dependencies"].append({
+            "agent_name": agent_name,
+            "task_id": task_id,
+            "dependencies": []
+        })  
+
+    def initialize_dependency_tree(self, agent_name: str):
+        """
+        Initializes the dependency tree with the first agent.
+
+        Args:
+            agent_name (str): The name of the agent.
+            task_id (str): The task ID associated with the agent.
+        """
+        task_id = next(
+        (plan["id"] for plan in self.agent_plans if plan["tool"] == agent_name),
+            None
+        )
+        if task_id is None:
+            raise ValueError(f"Task ID for agent {agent_name} not found in agent_plans.")
+        self.dependency_tree = {
+            "agent_name": agent_name,
+            "task_id": task_id,
+            "dependencies": []
+        }
+
+    def find_node_in_tree(self, current_node: dict, target_agent: str) -> Optional[dict]:
+        """
+        Recursively searches for a node in the dependency tree by agent name.
+
+    Args:
+            current_node (dict): The current node being searched.
+            target_agent (str): The name of the agent to find.
+
+        Returns:
+            Optional[dict]: The node if found, otherwise None.
+        """
+        if current_node["agent_name"] == target_agent:
+            return current_node
+
+        # Recursively search in the dependencies
+        for child in current_node["dependencies"]:
+            result = self.find_node_in_tree(child, target_agent)
+            if result:
+                return result
+
+        return None
+
     async def get_conversation_history(self, client_id: str, chat_id: str):
         """
         Retrieves the conversation history for a given client and chat.
@@ -222,12 +381,9 @@ class Mediator:
             list: The conversation history.
         """
         nodes = await self.neo4j_service.get_all_nodes_and_relationships()
-        print('nodes')
-        pprint(nodes)
-        state = await self.mongo_service.get_agent_state(client_id, chat_id)
-        if not state:
-            return []
-        conversation_history = state.get('conversation_history')
+        # print('nodes')
+        # pprint(nodes)
+        conversation_history = await self.mongo_service.get_history(client_id, chat_id)
 
         filtered_history = []
         for message in conversation_history:

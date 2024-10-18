@@ -1,16 +1,19 @@
 # core/joiner.py
+from services.openai_service import OpenAIService
+
 
 class Joiner:
     """
     The Joiner collects and combines results from prior actions.
     """
 
-    def __init__(self, observations):
-        self.observations = observations
+    def __init__(self):
+        self.openai_service = OpenAIService(agent_name="joiner")
 
-    def join(self):
+    async def join(self, initial_message, final_response):
         """
         Joins the observations to form the final response.
         """
-        responses = [str(obs) for idx, obs in sorted(self.observations.items())]
-        return "\n".join(responses)
+        message = f"Your task is to create a friendly response to the user request: {initial_message}. Request finished with results: {final_response}. You should ask if user liked the results or wants to change something."
+        assistant_response = await self.openai_service.get_response(conversation_history=[], system_prompt="", message=message)
+        return assistant_response

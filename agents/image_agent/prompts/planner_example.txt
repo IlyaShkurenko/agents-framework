@@ -1,0 +1,12 @@
+[{
+  "id": "32412459",
+  "description": "Call the generate_image_tool with the appropriate prompt with no dependencies",
+  "dependencies": [],
+  "tool": "generate_image_tool",
+  "arguments": [
+    {
+      "name": "prompt",
+      "value": "Generate an image of a cat with a funny hat and a sign saying 'I'm a cat'"
+    }
+  ]
+}]

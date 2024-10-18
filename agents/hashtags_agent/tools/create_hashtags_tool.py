@@ -1,36 +1,36 @@
 # tools/caption_tool.py
 
-import openai
+from typing import List
+from pydantic import BaseModel, Field
 
 from core.base_component import BaseComponent
 
-class CreateLLMHashtagsTool(BaseComponent):
+class AssistantResponse(BaseModel):
+    hashtags: List[str] = Field(default_factory=list)
+
+class CreateHashtagsTool(BaseComponent):
     """
     Tool that generates hashtags based on the current state.
     """
 
     @property
     def name(self):
-        return "CreateLLMHashtagsTool"
+        return "create_hashtags_tool"
 
     @property
     def description(self):
         return "Tool for generating hashtags based on LLM."
 
-    async def execute(self, state: dict):
+    async def execute(self, message: str):
         """
-        Generates a caption based on the state provided.
+        Generates hashtags based on the state provided.
         """
-        caption_style = state.get('caption_style', 'informative')
-        visual_description = state.get('visual_description', 'an image')
+        prompt = f"Generate hashtags for with the following details: {message}."
 
-        prompt = f"Generate a {caption_style} caption for {visual_description}."
-
-        response = openai.Completion.create(
-            engine="text-davinci-003",
-            prompt=prompt,
-            max_tokens=60,
-            temperature=0.7,
+        response = await self.openai_service.get_response(
+            conversation_history=[],
+            system_prompt="You are an AI assistant that specializes in generating hashtags for social media posts. Provide a list of hashtags without any explanations or comments.",
+            message=prompt,
+            response_schema=AssistantResponse
         )
-        caption = response.choices[0].text.strip()
-        return caption
+        return response.hashtags

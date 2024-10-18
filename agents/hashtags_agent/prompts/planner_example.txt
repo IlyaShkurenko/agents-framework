@@ -1,0 +1,13 @@
+Example 1:
+[{
+  "id": "32412459",
+  "description": "Call the create_hashtags_tool with the appropriate prompt with no dependencies",
+  "dependencies": [],
+  "tool": "create_hashtags_tool",
+  "arguments": [
+    {
+      "name": "prompt",
+      "value": "Generate hashtags for an Instagram post about a vacation to Bali. Use instagram hashtags format. Use 10 hashtags or less."
+    }
+  ]
+}]

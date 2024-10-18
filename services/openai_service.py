@@ -1,4 +1,5 @@
-from typing import Optional
+from datetime import datetime
+from typing import Optional, Union
 import openai
 
 
@@ -22,7 +23,7 @@ class OpenAIService:
         # self.client = openai.OpenAI()  # Initialize the OpenAI client
         self.client = openai.AsyncOpenAI()  # Initialize the OpenAI client
 
-    async def get_response(self, conversation_history: list, system_prompt: str, message: str, response_schema: Optional[BaseModel] = None):
+    async def get_response(self, conversation_history: list, system_prompt: Union[str, None], message: str, response_schema: Optional[BaseModel] = None):
         """
         Sends a request to the OpenAI API and optionally parses the response using a schema.
 
@@ -37,10 +38,11 @@ class OpenAIService:
         # Add system message at the beginning
         if not any(msg["role"] == "system" for msg in conversation_history):
             # Add system message at the beginning if it's not already there
-            conversation_history.insert(0, {"role": "system", "content": system_prompt, "agent": self.agent_name})
+            if system_prompt:
+                conversation_history.insert(0, {"role": "system", "content": system_prompt, "agent": self.agent_name, "datetime": datetime.now()})
 
         # Append the user's new message
-        conversation_history.append({"role": "user", "content": message, "agent": "user"})
+        conversation_history.append({"role": "user", "content": message, "agent": "user", "datetime": datetime.now()})
 
         # Prepare messages for OpenAI API
         openai_messages = [
@@ -73,6 +75,6 @@ class OpenAIService:
             content = result
 
         if content:
-            conversation_history.append({"role": "assistant", "content": content, "agent": self.agent_name})
+            conversation_history.append({"role": "assistant", "content": content, "agent": self.agent_name, "datetime": datetime.now()})
 
         return result

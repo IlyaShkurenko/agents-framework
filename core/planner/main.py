@@ -1,7 +1,7 @@
 # core/planner.py
 
 import openai
-from typing import List
+from typing import List, Union
 
 from services.openai_service import OpenAIService
 from pydantic import BaseModel, Field, create_model
@@ -39,20 +39,12 @@ class Planner:
     The Planner uses the LLM to generate a plan (list of tasks) based on the user's query.
     """
 
-    def __init__(self, 
-                 tools: List,
-                 include_overview: bool = False,
-                 replan: bool = False,
-                 examples: str = "",
-                 model: str = "gpt-4o"):
+    def __init__(self, tools: List, examples: str = ""):
         self.tools = tools
-        self.include_overview = include_overview
-        self.replan = replan
-        self.model = model
         self.examples = examples
         self.openai_service = OpenAIService(agent_name='planner')
 
-    async def create_plan(self, conversation_history: List, user_requirements: dict) -> tuple[List[dict], dict]:
+    async def create_plan(self, conversation_history: List, user_requirements: dict, replan: bool = False, include_overview: bool = False, replan_after_execution: Union[bool, None] = None, tasks_with_results: Union[List[dict], None] = None, executed_user_requirements: Union[dict, None] = None) -> tuple[List[dict], dict]:
         """
         Creates a plan by prompting the LLM and parsing the output.
 
@@ -66,18 +58,32 @@ class Planner:
             f"{i+1}. {tool.description}" for i, tool in enumerate(self.tools)
         )
 
-        # additional_context_section = f"\n{self.additional_context}" if self.additional_context else ""
-    
         prompt = PLANNER_PROMPT.format(
-            num_tools=len(self.tools) + 1,  # Including join()
+            num_tools=len(self.tools),
             tool_descriptions=tool_descriptions,
             examples=self.examples
         )
 
-        print('prompt', prompt)
+        if replan_after_execution:
+            replan_context = f"""
+            The previous plan was executed based on the following requirements:
+            {json.dumps(executed_user_requirements, indent=4)}
 
-        response_schema = create_dynamic_response_model(self.include_overview)
-        message = "Re-plan based on new requirements:" if self.replan else "Generate a plan based on user requirements:"
+            Here is the previous plan with results:
+            {json.dumps(tasks_with_results, indent=4)}
+
+            However, the user wants to make changes to the plan. Your task is to update the previous plan according to the new user requirements. 
+            - You can add, remove, or modify elements in the plan with new arguments based on the user's updated needs.
+            - Any elements that do not require changes **MUST keep their original ID**.
+            - If an element needs to be modified, **you MUST assign it a new ID**.
+            """
+
+            prompt += f"\n\n{replan_context}"
+
+        print("\033[33mPlanner Prompt:\033[0m", prompt)
+
+        response_schema = create_dynamic_response_model(include_overview)
+        message = "Re-plan based on new requirements:" if replan else "Generate a plan based on user requirements:"
         message += f"\n{str(user_requirements)}"
 
         assistant_response = await self.openai_service.get_response(conversation_history=conversation_history, system_prompt=prompt, message=message, response_schema=response_schema)

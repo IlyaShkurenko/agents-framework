@@ -1,5 +1,6 @@
 # services/mongo_service.py
 
+from datetime import datetime
 from motor.motor_asyncio import AsyncIOMotorClient
 
 class MongoService:
@@ -58,7 +59,34 @@ class MongoService:
             upsert=True
         )
 
-    async def get_agent_state(self, client_id: str, chat_id: str):
+    async def get_history(self, client_id: str, chat_id: str):
+        """
+        Retrieves the history for a given client.
+
+        Args:
+            client_id (str): The unique client identifier.
+            chat_id (str): The unique chat identifier.
+
+        Returns: 
+            dict: The history.
+        """
+        states = await self.agent_collection.find({'client_id': client_id, 'chat_id': chat_id}).to_list(None)
+
+        all_messages = [
+            message
+            for state in states
+            for message in state.get('conversation_history', [])
+        ]
+
+        sorted_messages = sorted(
+            all_messages,
+            key=lambda msg: msg['datetime']
+        )
+
+        return sorted_messages
+    
+
+    async def get_agent_state(self, client_id: str, chat_id: str, agent_name: str):
         """
         Retrieves the state for a given client.
 
@@ -68,7 +96,11 @@ class MongoService:
         Returns:
             dict: The client state.
         """
-        return await self._get_state(client_id, chat_id, 'agent_states')
+        state = await self.agent_collection.find_one({'client_id': client_id, 'chat_id': chat_id, 'name': agent_name})
+        if state:
+            state.pop('_id', None)
+            return state
+        return None
 
     async def update_agent_state(self, client_id: str, chat_id: str, state: dict):
         """
@@ -90,7 +122,11 @@ class MongoService:
         Returns:
             dict: The client state.
         """
-        return await self._get_state(client_id, chat_id, 'mediator_states')
+        state = await self.mediator_collection.find_one({'client_id': client_id, 'chat_id': chat_id})
+        if state:
+            state.pop('_id', None)
+            return state
+        return None
 
     async def update_mediator_state(self, client_id: str, chat_id: str, state: dict):
         """

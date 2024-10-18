@@ -1,0 +1,13 @@
+Example 1:
+[{
+  "id": "32412459",
+  "description": "Call the image_generation_agent with the appropriate prompt with no dependencies",
+  "dependencies": [],
+  "tool": "image_generation_agent",
+  "arguments": [
+    {
+      "name": "prompt",
+      "value": "Generate an image of a cat"
+    }
+  ]
+}]

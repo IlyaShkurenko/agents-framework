@@ -9,11 +9,13 @@ class MediatorStateModel:
 
     async def get_current_agent(self) -> str:
         self.state = await self.mongo_service.get_mediator_state(self.client_id, self.chat_id)
-        current_agent = self.state.get('current_agent')
-        if not current_agent:
-            current_agent = self.default_agent
-            await self.set_current_agent(current_agent)
-        return current_agent
+        if not self.state:
+            self.state = {
+                "client_id": self.client_id,
+                "chat_id": self.chat_id,
+                "current_agent": self.default_agent
+            }
+        return self.state.get('current_agent')
 
     async def set_current_agent(self, agent_name: str):
         self.state['current_agent'] = agent_name

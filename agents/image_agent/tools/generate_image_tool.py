@@ -19,8 +19,7 @@ class GenerateImageTool(BaseComponent):
     Tool that generates an image based on a prompt.
     """
 
-    def __init__(self, mediator, tools=None):
-        super().__init__(mediator, tools)
+    def __init__(self):
         self.runware = Runware(api_key=os.getenv('RUNWARE_API_KEY'))
         self.openai_service = OpenAIService(agent_name='generate_image_tool')
 
@@ -47,6 +46,8 @@ class GenerateImageTool(BaseComponent):
             message=message, 
             response_schema=AssistantResponse
         )
+
+        print('prompt', assistant_response.prompt)
         
         request_image = IImageInference(
             positivePrompt=assistant_response.prompt,
@@ -58,6 +59,8 @@ class GenerateImageTool(BaseComponent):
         )
 
         images = await self.runware.imageInference(requestImage=request_image)
+
+        print('images', images)
 
         if images:
             return {"image_url": images[0].imageURL}

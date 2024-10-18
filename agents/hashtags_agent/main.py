@@ -1,99 +1,69 @@
-# agents/caption_agent.py
-
-import openai
-from agents.hashtags_agent.tools.create_hashtags_tool import CreateLLMHashtagsTool
+from agents.hashtags_agent.tools.create_hashtags_tool import CreateHashtagsTool
 from core.base_agent import BaseAgent
-from pydantic import BaseModel, Field
+from core.base_component import BaseComponent
+from core.executor import Executor
+from core.planner.main import Planner
+from services.openai_service import OpenAIService
+from pydantic import BaseModel, Field, create_model
 from typing import List, Optional, Literal, Union
 import os
-
-from core.base_component import BaseComponent
-from services.openai_service import OpenAIService
+import asyncio
 
 # Load the prompt
 file_path = os.path.join(os.path.dirname(__file__), 'prompts', 'create_hashtags_prompt.txt')
+planner_example_file_path = os.path.join(os.path.dirname(__file__), 'prompts', 'planner_example.txt')
 
+with open(planner_example_file_path, 'r') as file:
+    PLANNER_EXAMPLE = file.read()
 with open(file_path, 'r') as file:
     HASHTAGS_PROMPT = file.read()
 
-class HashtagsPreferences(BaseModel):
-    hashtags_style: Literal['informative', 'humorous', 'inspirational', 'other'] = Field(..., description="Style of the hashtags")
-    additional_notes: str = Field("", description="Any additional notes from the user")
-
+class UserRequirements(BaseModel):
+    topic: Optional[str] = Field(
+        None,
+        description="The main topic or subject for which hashtags should be generated (e.g., 'travel', 'fitness', 'technology')."
+    )
+    target_audience: Optional[str] = Field(
+        None,
+        description="The specific audience the hashtags should target (e.g., 'millennials', 'tech enthusiasts', 'yoga lovers')."
+    )
+    tone: Optional[Literal['formal', 'informal', 'humorous', 'inspirational']] = Field(
+        None,
+        description="The tone or style of the hashtags (e.g., 'humorous', 'inspirational')."
+    )
+    keywords: Optional[List[str]] = Field(
+        default_factory=list,
+        description="Specific keywords to include in the hashtags (e.g., 'travel', 'adventure', 'nature')."
+    )
+    summary: str = Field(
+        ...,
+        description="Brief Summary of the user's requirements for hashtag generation. If the user has provided a specific requirements, include them here. Start with 'User decided to...'"
+    )
 class AssistantResponse(BaseModel):
-    message: str = Field(None, description="Assistant's message to the user")
-    hashtags_preferences: HashtagsPreferences = Field(None, description="User's hashtags preferences")
+    redirect: bool = Field(False, description="If user asks non related to hashtags generation, set redirect to True")
+    user_requirements: Optional[UserRequirements] = Field(None, description="User's requirements in structured form, only if all information is provided, otherwise None")
+    message: str = Field(None, description="Assistant's message to the user. Do not mention structured information. Should be empty '' if user_requirements is provided or redirect is True")
 
 class HashtagsAgent(BaseAgent):
     """
-    The HashtagsAgent handles hashtag generation.
+    The HashtagsAgent handles caption generation.
     """
+
     @property
     def name(self):
-        return "create_hashtags_agent"
+        return "hashtags_agent"
 
     @property
     def description(self):
-        return "An agent that handles hashtag generation."
+        return "An agent that handles hashtags generation."
     
     def __init__(self, mediator, tools: Optional[List[Union[BaseComponent, BaseAgent]]] = None):
-        self.create_llm_hashtags_tool = CreateLLMHashtagsTool()
-        super().__init__(mediator, [self.create_llm_hashtags_tool] + (tools or []))
-        
+        self.create_hashtags_tool = CreateHashtagsTool()
+        super().__init__(mediator, [self.create_hashtags_tool] + (tools or []))
         self.openai_service = OpenAIService(agent_name=self.name)
-
-    def handle_message(self, client_id: str, chat_id: str, message: str, state: dict):
-        # Check if we have enough context to proceed
-        if 'hashtags_preferences' not in state:
-            # Run the questionnaire to collect hashtags style
-            response = self.run_questionnaire(message, state)
-            assistant_response = response.get('assistant_response')
-
-            # Update conversation history
-            conversation_history = state.get('conversation_history', [])
-            conversation_history.append({"role": "assistant", "content": assistant_response.message, "agent": self.name})
-            state['conversation_history'] = conversation_history
-
-            if assistant_response.hashtags_preferences:
-                state['hashtags_preferences'] = assistant_response.hashtags_preferences.dict()
-            else:
-                # Return the assistant's message to the user
-                return assistant_response.message or 'Sorry, I did not understand your request.'
-
-        # Generate the caption using the tool
-        # caption = CaptionTool().execute(state)
-        # return caption
-
-    def run_questionnaire(self, message: str, state: dict):
-        """
-        Runs the questionnaire to collect caption preferences.
-
-        Args:
-            message (str): The message from the user.
-
-        Returns:
-            dict: The assistant's response.
-        """
-        messages = state.get('conversation_history', [])
-        messages.append({"role": "system", "content": HASHTAGS_PROMPT, "agent": self.name})
-        if message:
-            messages.append({"role": "user", "content": message, "agent": "user"})
-
-        # Convert messages to OpenAI format
-        openai_messages = [{"role": msg["role"], "content": msg["content"]} for msg in messages if msg["agent"] == self.name or msg["agent"] == "user"]
-
-        # Use the OpenAI ChatCompletion with Pydantic parsing
-        response = openai.ChatCompletion.create(
-            model="gpt-4-0613",
-            messages=openai_messages,
-            temperature=0.7,
-            max_tokens=150,
-            response_format=AssistantResponse  # This is the Pydantic model
-        )
-
-        assistant_message = response.choices[0].message
-
-        # Parse the assistant's response using the Pydantic model
-        assistant_response = assistant_message.parsed
-
-        return {'assistant_response': assistant_response}
+        self.executor = Executor(tools=[self.create_hashtags_tool], agent=self)
+        self.include_overview = False
+        self.planner = Planner(tools=self.tools, examples=PLANNER_EXAMPLE)
+        self.questionnaire_prompt = HASHTAGS_PROMPT
+        self.questionnaire_response_schema = AssistantResponse
+        self.status = None

@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
 from agents.hashtags_agent.main import HashtagsAgent
+from agents.image_agent.main import ImageAgent
 from agents.visual_effects_agent.main import VisualEffectsAgent
 from core.mediator import Mediator
 from agents.init_agent.main import InitAgent
@@ -9,6 +10,7 @@ from agents.caption_agent.main import CaptionAgent
 from rich.traceback import install
 from typing import List
 import json
+import asyncio
 
 install()
 
@@ -28,13 +30,23 @@ mediator = Mediator()
 # Register agents
 caption_agent = CaptionAgent(mediator)
 hashtags_agent = HashtagsAgent(mediator)
-visual_effects_agent = VisualEffectsAgent(mediator)
+image_agent = ImageAgent(mediator)
+visual_effects_agent = VisualEffectsAgent(mediator, [image_agent])
 init_agent = InitAgent(mediator, [caption_agent, hashtags_agent, visual_effects_agent])
 
 mediator.register_agent(init_agent)
 mediator.register_agent(caption_agent)
 mediator.register_agent(hashtags_agent)
 mediator.register_agent(visual_effects_agent)
+mediator.register_agent(image_agent)
+# from agents.visual_effects_agent.tools.generate_image_tool import GenerateImageTool
+
+
+# generate_image = GenerateImageTool()
+
+# asyncio.create_task(generate_image.execute({
+# 	"image_requirements": "Bali retreat"
+# }))
 
 class ConnectionManager:
     def __init__(self):

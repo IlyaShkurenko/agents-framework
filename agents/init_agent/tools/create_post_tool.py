@@ -31,12 +31,12 @@ class CreatePostTool(BaseComponent):
     def description(self):
         return "Tool for combining hashtags, caption and image/video into one post."
 
-    async def execute(self, state: dict):
+    async def execute(self, message: str):
         """
         Returns a post with visual part, caption and hashtags.
-        """
-        history = state.get('conversation_history', [])
-        message = "Create a post with the following image, caption and hashtags: "
-        assistant_response = await self.openai_service.get_response(conversation_history=history, system_prompt=INIT_PROMPT, message=message, response_schema=AssistantResponse)
+        """     
+        print("\033[34mMessage in create_post_tool:\033[0m", message)
+
+        assistant_response = await self.openai_service.get_response(conversation_history=[], system_prompt=INIT_PROMPT, message=message, response_schema=AssistantResponse)
         return assistant_response
         

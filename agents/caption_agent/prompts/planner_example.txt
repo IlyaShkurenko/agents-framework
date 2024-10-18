@@ -1,0 +1,13 @@
+Example 1:
+[{
+  "id": "32412459",
+  "description": "Call the create_caption_tool with the appropriate prompt with no dependencies",
+  "dependencies": [],
+  "tool": "create_caption_tool",
+  "arguments": [
+    {
+      "name": "prompt",
+      "value": "Generate a caption for an Instagram post about a vacation to Bali. The caption should be 10 words or less. Be creative and use emojis."
+    }
+  ]
+}]

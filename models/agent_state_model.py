@@ -1,5 +1,6 @@
 # state_model.py
 
+from datetime import datetime
 from services.mongo_service import MongoService
 
 
@@ -12,7 +13,7 @@ class AgentStateModel:
         self.state = {}
 
     async def load_state(self):
-        state = await self.mongo_service.get_agent_state(self.client_id, self.chat_id)
+        state = await self.mongo_service.get_agent_state(self.client_id, self.chat_id, self.agent_name)
         if not state:
             self.state = {
                 "name": self.agent_name,
@@ -32,7 +33,7 @@ class AgentStateModel:
         self.state['user_requirements'] = user_requirements
         
     def add_message_to_conversation_history(self, message: dict):
-        message_data = {"role": "assistant", "content": message, "agent": self.agent_name}
+        message_data = {"role": "assistant", "content": message, "agent": self.agent_name, "datetime": datetime.now()}
         self.state['conversation_history'].append(message_data)
 
     def save_agent_history(self, history: list):
@@ -40,6 +41,12 @@ class AgentStateModel:
         
     def save_agent_planner_history(self, history: list):
         self.state['planner_conversation_history'] = history
+
+    def save_agent_status(self, status: str):
+        self.state['status'] = status  
+        
+    def get_agent_status(self):
+        return self.state.get('status')
         
     def save_agent_plan(self, plan: dict):
         if 'plan' not in self.state:
