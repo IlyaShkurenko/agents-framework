@@ -203,6 +203,7 @@ class Mediator:
 
         # If the call stack is empty, get the current agent and push it onto the stack
         if not self.call_stack:
+            print('initialize call stack')
             await self.initialize_call_stack()
         # Execute the next agent in the stack
         return await self.execute_next_in_stack(message)
@@ -260,14 +261,14 @@ class Mediator:
     async def run_agent_task(self, agent, message: str) -> str:
         """Runs the given agent's task and removes it from the stack."""
         start_time = time.time()
-        print('before execute')
+        print(f"before execute {agent.name}")
         response = await agent.execute(message=message)
-        print('after execute')
+        print(f"after execute {agent.name}")
         end_time = time.time()
         print(f"Time taken to execute agent: {end_time - start_time} seconds")
         return response
     
-    def on_agent_execute(self, agent_name: str):
+    def on_agent_done(self, agent_name: str):
         """
         Called when the agent is executed.
         """
@@ -277,6 +278,11 @@ class Mediator:
                 print(f"Removed {agent_name} from the call stack.")
                 return 
         print(f"Agent {agent_name} not found in the call stack.")
+
+    def on_agent_execute(self, agent_name: str):
+        agent = self.agents.get(agent_name)
+        agent.on_agent_execute()
+
         
     async def add_agent_to_call_stack(self, parent_agent: str, agent_name: str, task_id: str, message: str):
         """
@@ -296,7 +302,7 @@ class Mediator:
         # Add the agent to the dependency tree
         if parent_agent == self.default_agent:
             # If it's the first agent, initialize the root of the tree
-            self.initialize_dependency_tree(agent_name)
+            # self.initialize_dependency_tree(agent_name)
             print("\033[31mDependency tree after initialization:\033[0m")
             pprint(self.dependency_tree)
         else:
@@ -306,6 +312,7 @@ class Mediator:
             pprint(self.dependency_tree)
 
         await self.handle_message(self.client_id, self.chat_id, message)
+        print('5')
 
     def add_dependency(self, parent_agent: str, agent_name: str, task_id: str):
         """

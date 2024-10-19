@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from typing import List, Dict, Any
 import asyncio
 import json
-import pprint
+from pprint import pprint
 class Executor:
     def __init__(self, agent, tools):
         """
@@ -40,11 +40,7 @@ class Executor:
 
         # Launch tool tasks in parallel
         tool_tasks = [task for task in tasks if "tool" in task["tool"].lower()]
-        loop = asyncio.get_event_loop()
-        futures = [
-            loop.run_in_executor(None, self._process_tool_task, task)
-            for task in tool_tasks
-        ]
+        futures = [self._process_tool_task(task) for task in tool_tasks]
         print("\033[31mTool tasks:\033[0m")
         pprint(tool_tasks)
 
@@ -78,7 +74,7 @@ class Executor:
                         pprint(dependencies_results)
                         #Result of agent task is a list of tools on which it depends. If it depends on agent then it's used as an argument for it
                         self.observations[task["id"]] = dependencies_results
-                        # self.agent.on_agent_execute(task["tool"])
+                        self.agent.on_agent_execute(task["tool"])
                         await self.tasks_state_model.save_task_result(task["id"], dependencies_results)
                         return dependencies_results
                     else:
@@ -90,8 +86,10 @@ class Executor:
                         return  # Exit after calling the agent
 
         # Wait for all tool tasks to complete
+        print('start asyncio.gather')
         await asyncio.gather(*futures)
-        return "Execution completed successfully."
+        print('done execution')
+        return "Execution completed successfully." #needs to check here if that's a last agent or tool
 
     async def _process_agent_task(self, task: Dict[str, Any], dependencies_results_as_arguments: Dict[str, Any] = None):
         """
@@ -163,6 +161,7 @@ class Executor:
         Args:
             task (Dict[str, Any]): The tool task to process.
         """
+        print("\033[34mProcessing tool task:\033[0m", task)
         task_id = task["id"]
         tool_dependencies = self._get_tool_dependencies(task["dependencies"])
 
@@ -305,3 +304,6 @@ class Executor:
             })
 
         await self.execute_plan(self.tasks)
+
+
+#No, i mean let's have only hashtags without caption or visual

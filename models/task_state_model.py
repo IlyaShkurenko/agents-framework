@@ -1,72 +1,62 @@
-from typing import Optional
+from typing import Optional, List, Dict
 from services.mongo_service import MongoService
 
 class TasksStateModel:
     def __init__(self, client_id: str, chat_id: str):
-        """
-        Initialize the TasksStateModel with client and chat identifiers.
-
-        Args:
-            client_id (str): Unique identifier for the client.
-            chat_id (str): Unique identifier for the chat session.
-        """
         self.client_id = client_id
         self.chat_id = chat_id
         self.mongo_service = MongoService()
-        self.state = None 
+        self.state = None  # Cache for the state
+
+    async def load_state(self):
+        state = await self.mongo_service.get_tasks_state(self.client_id, self.chat_id)
+        if not state:
+            self.state = {
+                "client_id": self.client_id,
+                "chat_id": self.chat_id,
+                "tasks": []
+            }
+            await self._update_state()
+        else:
+            self.state = state
 
     async def save_task_result(self, task_id: int, result: dict):
-        """
-        Save the result of a task by its ID.
+        state = await self._get_or_load_state()
 
-        Args:
-            task_id (int): The ID of the task.
-            result (dict): The result of the task.
-        """
-        state = await self._load_state()
-        state[task_id] = result
+        for task in state["tasks"]:
+            if task["id"] == task_id:
+                task["result"] = result
+                break
+        else:
+            state["tasks"].append({"id": task_id, "result": result})
+
         await self._update_state()
 
     async def get_task_result(self, task_id: int) -> Optional[dict]:
-        """
-        Retrieve the result of a task by its ID.
+        state = await self._get_or_load_state()
 
-        Args:
-            task_id (int): The ID of the task.
+        for task in state["tasks"]:
+            if task["id"] == task_id:
+                return task.get("result")
 
-        Returns:
-            Optional[dict]: The result of the task if found, otherwise None.
-        """
-        state = await self._load_state()
-        return state.get(task_id)
+        return None
 
     async def task_exists(self, task_id: int) -> bool:
-        """
-        Check if a task with the given ID exists in the state.
+        state = await self._get_or_load_state()
+        return any(task["id"] == task_id for task in state["tasks"])
 
-        Args:
-            task_id (int): The ID of the task.
-
-        Returns:
-            bool: True if the task exists, otherwise False.
-        """
-        state = await self._load_state()
-        return task_id in state
-
-    async def _load_state(self) -> dict:
-        """
-        Load the current state from the database if not already cached.
-
-        Returns:
-            dict: The current state of tasks.
-        """
+    async def _get_or_load_state(self) -> dict:
         if self.state is None:
-            self.state = await self.mongo_service.get_tasks_state(self.client_id, self.chat_id) or {}
+            await self.load_state()
         return self.state
 
+    async def update_tasks_state(self):
+        await self.mongo_service.update_tasks_state(
+            self.client_id, self.chat_id, self.state
+        )
+        
     async def _update_state(self):
-        """
-        Update the state in the database using the local cache.
-        """
         if self.state is not None:
-            await self.mongo_service.update_tasks_state(self.client_id, self.chat_id, self.state)
+            await self.mongo_service.update_tasks_state(
+                self.client_id, self.chat_id, self.state
+            )

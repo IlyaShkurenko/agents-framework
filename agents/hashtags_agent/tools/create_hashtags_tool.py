@@ -4,6 +4,7 @@ from typing import List
 from pydantic import BaseModel, Field
 
 from core.base_component import BaseComponent
+from services.openai_service import OpenAIService
 
 class AssistantResponse(BaseModel):
     hashtags: List[str] = Field(default_factory=list)
@@ -20,6 +21,9 @@ class CreateHashtagsTool(BaseComponent):
     @property
     def description(self):
         return "Tool for generating hashtags based on LLM."
+    
+    def __init__(self):
+        self.openai_service = OpenAIService(agent_name=self.name)
 
     async def execute(self, message: str):
         """

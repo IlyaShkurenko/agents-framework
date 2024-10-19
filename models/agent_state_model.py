@@ -27,7 +27,7 @@ class AgentStateModel:
             self.state = state
 
     async def save_state(self):
-        await self.mongo_service.update_agent_state(self.client_id, self.chat_id, self.state)
+        await self.mongo_service.update_agent_state(self.client_id, self.chat_id, self.agent_name, self.state)
 
     def save_user_requirements(self, user_requirements: dict):
         self.state['user_requirements'] = user_requirements
@@ -54,6 +54,12 @@ class AgentStateModel:
         else:
             self.state['plan'].append(plan)
 
+    def get_tasks(self) -> list:
+        if self.is_plan_exists():
+            last_plan = self.state['plan'][-1]
+            return last_plan.get('tasks', [])
+        return []
+
     def get_user_requirements(self):
         return self.state.get('user_requirements')
 
@@ -64,7 +70,7 @@ class AgentStateModel:
         return self.state.get('planner_conversation_history', [])
     
     def is_plan_exists(self):
-        return 'plan' in self.state
+        return 'plan' in self.state and len(self.state['plan']) > 0
 
     def add_to_conversation_history(self, messages: list[dict]):
         self.state['conversation_history'].extend(messages)

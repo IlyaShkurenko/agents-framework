@@ -1,5 +1,6 @@
 # agents/init_agent.py
 
+from agents.hashtags_agent.tools.create_hashtags_tool import CreateHashtagsTool
 from core.base_agent_with_plan_approve import BaseAgentWithPlanApprove
 from core.base_component import BaseComponent
 from .tools.create_post_tool import CreatePostTool
@@ -21,36 +22,6 @@ class UserRequirements(BaseModel):
     caption_needed: bool = Field(..., description="Whether the user needs a caption")
     hashtags_needed: bool = Field(..., description="Whether the user needs hashtags")
     summary: str = Field(..., description="Brief Summary of the user's requirements. This info will be used by next agent to create a plan. If user mentioned sequence of actions then include it in summary so plan can be correct. Change it only if new requirements are provided otherwise leave it as is. Start with 'User decided to'")
-
-user_requirements_description = (
-    "User's requirements in structured form. "
-    "only if all information is provided, otherwise None"
-)
-class AssistantResponse(BaseModel):
-    message: str = Field(None, description="Assistant's message to the user. Do not mention structured information. Should be empty '' if user_requirements is provided")
-    user_requirements: Optional[UserRequirements] = Field(None, description=user_requirements_description)
-
-def create_dynamic_response_model(
-    include_plan_action: bool = False, 
-    include_result_accepted: bool = False
-):
-    dynamic_fields = {}
-
-    if include_plan_action:
-        dynamic_fields['plan_approved'] = (bool, Field(..., description="True if the user explicitly confirms that he want to proceed with the plan as is. False if the user asks any questions, requests clarifications, or indicates that he wants to adjust the plan."))
-    if include_result_accepted:
-        dynamic_fields['result_accepted'] = (bool, Field(..., description="True if the user explicitly confirms that he want to proceed with the result as is. False if the user asks any questions, requests clarifications, or indicates that he wants to adjust the result."))
-        # dynamic_fields['changes_to_apply'] = (str, Field(..., description="Changes to apply to the result if the user wants to adjust the result. Otherwise, it should be empty ''. Exists only if result_accepted is False"))
-        user_requirements_description += " If result_accepted is False then be sure to provide it and mention new requirements in user_requirements.summary field."
-        
-
-    # Create a new model with dynamic fields first, followed by the base fields
-    return create_model(
-        'DynamicAssistantResponse',
-        **dynamic_fields,  # Insert dynamic fields first
-        message=(Optional[str], Field(None, description="Assistant's message to the user.")),
-        user_requirements=(Optional[UserRequirements], Field(None, description=user_requirements_description)),
-    )
 
 # def create_dynamic_response_model(include_plan_action: bool = False, include_result_accepted: bool = False):
 #     if include_plan_action:
@@ -92,24 +63,26 @@ class InitAgent(BaseAgentWithPlanApprove):
     
     def __init__(self, mediator, tools: Optional[List[Union[BaseComponent, BaseAgent]]] = None):
         create_post_tool = CreatePostTool()
+        create_hashtags_tool = CreateHashtagsTool()
+
         all_tools = [create_post_tool] + (tools or [])
         super().__init__(mediator, all_tools)
-        self.executor = Executor(tools=[create_post_tool], agent=self)
+        self.executor = Executor(tools=[create_post_tool, create_hashtags_tool], agent=self)
         self.openai_service = OpenAIService(agent_name=self.name)
         self.planner_example = PLANNER_EXAMPLE
         self.planner = Planner(tools=all_tools, examples=self.planner_example)
         self.questionnaire_prompt = INIT_PROMPT
         self.has_joiner = False
-        self.status = None
-        self.create_dynamic_response_model = create_dynamic_response_model 
-    
-    def get_response_model(self):
-        print("\033[34mIs plan exists:\033[0m", self.state_model.is_plan_exists())
+        self.status = None     
+        self.user_requirements_schema = UserRequirements
+        self.include_overview = True
+        self.include_plan_action = False
 
-        is_waiting_for_approval = self.state_model.get_agent_status() is 'waiting_for_approval'
-        print("\033[34mIs waiting for approval:\033[0m", is_waiting_for_approval)
-        
-        return create_dynamic_response_model(include_plan_action=self.state_model.is_plan_exists(), include_result_accepted=is_waiting_for_approval)        
+    def get_response_model(self):
+        extra_fields = {
+            "redirect": (bool, Field(..., description="If user asks non related to image generation, set redirect to True"))
+        }
+        return self._create_dynamic_response_model(extra_fields=extra_fields)
     
 
 

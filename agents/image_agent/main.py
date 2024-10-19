@@ -44,14 +44,6 @@ class UserRequirements(BaseModel):
     )
     summary: str = Field(..., description="Brief Summary of the user's requirements. This info will be used by next agent to create a plan. If user mentioned sequence of actions then include it in summary so plan can be correct. Change it only if new requirements are provided otherwise leave it as is. Start with 'User decided to'")
 
-class AssistantResponse(BaseModel):
-    redirect: bool = Field(False, description="If user asks non related to image generation, set redirect to True")
-    user_requirements: Optional[UserRequirements] = Field(
-        None, 
-        description="User's requirements in structured form, only if all information is provided, otherwise None."
-    )
-    message: str = Field(None, description="Assistant's message to the user. Do not mention structured information. Should be empty '' if user_requirements is provided or redirect is True")
-
 class ImageAgent(BaseAgent):
     """
     The ImageAgent handles image generation and editing.
@@ -73,5 +65,11 @@ class ImageAgent(BaseAgent):
         self.include_overview = False
         self.planner = Planner(tools=self.tools, examples=PLANNER_EXAMPLE)
         self.questionnaire_prompt = IMAGE_PROMPT
-        self.questionnaire_response_schema = AssistantResponse
+        self.user_requirements_schema = UserRequirements
         self.status = None
+        
+    def get_response_model(self):
+        extra_fields = {
+            "redirect": (bool, Field(..., description="If user asks non related to image generation, set redirect to True"))
+        }
+        return self._create_dynamic_response_model(extra_fields=extra_fields)

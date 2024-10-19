@@ -2,117 +2,125 @@
 
 from core.base_agent import BaseAgent
 from core.planner.main import Planner
-
+import copy
+import time
+import asyncio
 class BaseAgentWithPlanApprove(BaseAgent):
     """
     The InitAgent handles the initial interaction with the user.
     """
 
-    @property
-    def name(self):
-        return "init_agent"
-
-    @property
-    def description(self):
-        return "Agent responsible for initial interaction with the user. Collects user requirements and creates a plan for creation a social media content."
+    def __init__(self, mediator, tools=None):
+        super().__init__(mediator, tools or [])
     
     async def handle_message(self, message: str):
-        if not self.initial_message:
-            self.initial_message = message
+        self.tasks = [{
+            "id": 12345677,
+            "tool": "create_hashtags_tool",
+            "dependencies": [],
+            "arguments": [{
+                "name": "prompt",
+                "value": "Generate a hashtags for Bali retreat"
+						}]
+				}]
+        #todo handle case when bellow
+        # await self.mediator.add_agent_to_call_stack(
+        #         parent_agent=self.name,
+        #         agent_name='create_hashtags_agent',
+        #         task_id="32345672",
+        #         message=message
+        #     )
+        # print('add to call stack')
+        # asyncio.create_task(
+        #     self.mediator.add_agent_to_call_stack(
+        #         parent_agent=self.name,
+        #         agent_name='create_hashtags_agent',
+        #         task_id=1123123,
+        #         message=message
+        #     )
+        # )
+        # await asyncio.sleep(0)
+        # return
+        if self._is_executing() or True:
+            print('is exec')
+            return await self._execute_plan_and_finalize(self.tasks)
+
+        self._save_initial_message(message)
+
         print(f"\033[34mMessage in {self.name}:\033[0m", message)
+        start_time = time.time()
         assistant_response = await self.run_questionnaire(message)
         print('assistant_response', assistant_response)
-
-        if assistant_response.result_accepted:
-            self.state_model.save_agent_status('completed')
-            self.mediator.on_agents_done(self.name)
-            return assistant_response.message
-
+        end_time = time.time()
+        print(f"\033[34mTime taken to run questionnaire:\033[0m {end_time - start_time} seconds")
+        
+        need_replan, replan_after_execution, previous_user_requirements = self._parse_assistant_response(assistant_response)
+        
+				#In case if no user requirements provided or no need to replan. In case of replan we will send message to user as plan overview  
+        plan_is_required = need_replan or (not self._is_plan_exists() and assistant_response.user_requirements)
+        
+        print('plan_is_required', plan_is_required)
+        
+            # return
+        
+        print('tasks in handle message agent', self.tasks)
+        plan_overview_sent = False
         if assistant_response.user_requirements:
-
-            if assistant_response.message:
-                self.mediator.emit_message('message', assistant_response.message)
-
-            need_replan = self.state_model.is_requirements_changed(assistant_response.user_requirements.dict())
-
-            result_accepted = getattr(assistant_response, 'result_accepted', False)
-            previous_user_requirements = self.state_model.get_user_requirements();
-
-            self.state_model.save_user_requirements(assistant_response.user_requirements.dict())
-            print('plan approved', getattr(assistant_response, 'plan_approved', False))
-            print('need_replan', need_replan)
-            print('result accepted', result_accepted)
-            print('message', assistant_response.message)
-            plan_approved = getattr(assistant_response, 'plan_approved', False)
-            if not plan_approved or need_replan:
+            self._save_user_requirements(assistant_response)
+            # plan_approved = getattr(assistant_response, 'plan_approved', False)
+            plan_response = {};
+            if plan_is_required:
                 # Create a plan or replan based on the user requirements
-                self.mediator.emit_message('planning_started')
-                planner = Planner(tools=self.tools,examples=self.planner_example)
+                plan_response = await self._create_and_save_plan(
+                    need_replan=need_replan,
+                    replan_after_execution=replan_after_execution,
+                    tasks_with_results=self.executor.get_tasks_with_results(),
+                    executed_user_requirements=previous_user_requirements
+                )
+                self._add_message_to_conversation_history(plan_response['overview'])
+                self._emit_assistant_message(plan_response['overview'])
+                plan_overview_sent = True
+                return
 
-                user_requirements = self.state_model.get_user_requirements()
-                planner_conversation_history = self.state_model.get_agent_planner_conversation_history()
-
-                self.state_model.save_agent_status("planning")
-                planner_conversation_history, planner_response = await planner.create_plan(conversation_history=planner_conversation_history, user_requirements=user_requirements, include_overview=True, replan=need_replan, replan_after_execution=not result_accepted, tasks_with_results=self.executor.get_tasks_with_results(), executed_user_requirements=previous_user_requirements)
-                
-                # Update planner conversation history which includes overview and tasks
-                self.state_model.save_agent_planner_history(planner_conversation_history)
-                plan_response_dict = planner_response.dict()
-    
-                # Update agent conversation history which includes only overview
-                self.state_model.add_message_to_conversation_history(plan_response_dict['overview'])
-
-                self.state_model.save_agent_plan(plan_response_dict)
-                self.tasks = plan_response_dict['tasks']
-
-                self.mediator.emit_plan(plan=plan_response_dict, summary=user_requirements['summary'], agent_name=self.name)
-
-                return plan_response_dict['overview']
-
-            # return 'Start execution'
-            # Execute the plan
-            self.executor.set_tasks_state_model(self.mediator.mediator_tasks_state_model)
-            self.state_model.save_agent_status("execution")
-            self.mediator.emit_message('execution_started')
-            final_response = await self.executor.execute_plan()
-
-            if self.has_joiner:
-                final_response = await self.joiner.join(initial_message=self.initial_message, final_response=final_response)
-                
-            self.state_model.add_message_to_conversation_history(final_response)
+            if self.tasks:
+                final_response = await self._execute_plan_and_finalize(self.tasks)
+                return final_response
+            else:
+                return await self.handle_message(f"{message}, generate user_requirements")
             
-            self.state_model.save_agent_status('waiting_for_approval')
-
-            return final_response
-        else:
-            # Return the assistant's message to the user
-            return assistant_response.message or 'Sorry, I did not understand your request.'
-
-    async def run_questionnaire(self, message: str):
-        """
-        Runs the questionnaire to collect user requirements.
-
-        Args:
-            message (str): The message from the user.
-
-        Returns:
-            dict: The assistant's response.
-        """
-        self.state_model.save_agent_status("questionnaire")
-        history = self.state_model.get_conversation_history()
-        print("\033[34mIs plan exists:\033[0m", self.state_model.is_plan_exists())
-
-        response_model = self.get_response_model()
-        print('response_model',response_model)
-        assistant_response = await self.openai_service.get_response(conversation_history=history, system_prompt=self.questionnaire_prompt, message=message, response_schema=response_model)
-
-        return assistant_response
+        if assistant_response.message and not plan_overview_sent:
+            self._emit_assistant_message(assistant_response.message)
     
     def get_response_model(self):
-        print("\033[34mIs plan exists:\033[0m", self.state_model.is_plan_exists())
+        print("\033[34mIs plan exists:\033[0m", self._is_plan_exists())
 
-        is_waiting_for_approval = self.state_model.get_agent_status() is 'waiting_for_approval'
+        is_waiting_for_approval = self._get_agent_status() == 'waiting_for_approval'
         print("\033[34mIs waiting for approval:\033[0m", is_waiting_for_approval)
         
-        return self.create_dynamic_response_model(include_plan_action=self.state_model.is_plan_exists(), include_result_accepted=is_waiting_for_approval)  
-  
+        return self._create_dynamic_response_model()  
+    
+# ['init_agent']
+# Time taken to get current agent: 0.3455948829650879 seconds
+# tasks in load state []
+# Time taken to set client data: 0.3660280704498291 seconds
+# setting current agent init_agent
+# before execute init_agent
+# message Bali retreat
+
+# is exec
+# in mediator emitMessage
+# Tasks: []
+# Tool tasks:
+# []
+# start asyncio.gather
+# done execution
+# in execute plan and finalize
+# final_response Execution completed successfully.
+# in mediator emitMessage
+# <class 'dict'>
+# {'content': None, 'type': 'execution_started'}
+# <class 'dict'>
+# {'content': 'Execution completed successfully.', 'type': 'message'}
+# after execute init_agent
+# Time taken to execute agent: 0.04810976982116699 seconds
+#it's because status is executing

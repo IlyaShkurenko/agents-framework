@@ -48,22 +48,7 @@ class UserRequirements(BaseModel):
     add_music: bool = Field(False)
     add_voice_over: bool = Field(False)
     summary: str = Field(..., description="Brief Summary of the user's requirements. This info will be used by next agent to create a plan. If user mentioned sequence of actions then include it in summary so plan can be correct. Change it only if new requirements are provided otherwise leave it as is. Start with 'User decided to'")
-class AssistantResponse(BaseModel):
-    redirect: bool = Field(False, description="If user asks non related to visual effects generation or editing, set redirect to True.")
-    user_requirements: Optional[UserRequirements] = Field(
-        default_factory=dict, description="User's requirements in structured form, only if all information is provided, otherwise None"
-    )
-    message: str = Field(None, description="Assistant's message to the user. Do not mention structured information. Should be empty '' if user_requirements is provided or redirect is True")
 
-def create_dynamic_response_model(include_plan_action: bool = False):
-    if include_plan_action:
-        return create_model(
-            'AssistantResponseWithReplan',
-            plan_approved=(bool, Field(..., description="True if the user explicitly confirms that he want to proceed with the plan as is. False if the user asks any questions, requests clarifications, or indicates that he wants to adjust the plan.")),
-            __base__=AssistantResponse
-        )
-    else:
-        return AssistantResponse
 class VisualEffectsAgent(BaseAgentWithPlanApprove):
     """
     The VisualEffectsAgent handles visual effects generation or editing.
@@ -89,4 +74,13 @@ class VisualEffectsAgent(BaseAgentWithPlanApprove):
         self.initial_message = None
         self.joiner = Joiner()
         self.has_joiner = True
-        self.create_dynamic_response_model = create_dynamic_response_model 
+        self.user_requirements_schema = UserRequirements
+        self.include_plan_action = False
+
+    def get_response_model(self):
+        # Add custom field `redirect` for this agent
+        extra_fields = {
+            "redirect": (bool, Field(..., description="If user asks non-related to visual effects generation or editing, set redirect to True."))
+        }
+        # Create dynamic response model with extra fields
+        return self._create_dynamic_response_model(extra_fields=extra_fields)

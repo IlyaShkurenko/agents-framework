@@ -51,10 +51,6 @@ class UserRequirements(BaseModel):
         ...,
         description="Brief summary of the user's requirements for the caption. If the user has provided a specific requirements, include them here. Start with 'User decided to...'"
     )
-class AssistantResponse(BaseModel):
-    redirect: bool = Field(False, description="If user asks non related to caption generation, set redirect to True.")
-    user_requirements: Optional[UserRequirements] = Field(None, description="User's requirements in structured form, only if all information is provided, otherwise None")
-    message: str = Field(None, description="Assistant's message to the user. Do not mention structured information. Should be empty '' if user_requirements is provided or redirect is True")
 
 class CaptionAgent(BaseAgent):
     """
@@ -78,4 +74,10 @@ class CaptionAgent(BaseAgent):
         self.executor = Executor(tools=[self.create_caption_tool], agent=self)
         self.status = None
         self.questionnaire_prompt = CAPTION_PROMPT
-        self.questionnaire_response_schema = AssistantResponse
+        self.user_requirements_schema = UserRequirements
+
+    def get_response_model(self):
+        extra_fields = {
+            "redirect": (bool, Field(..., description="If user asks non related to caption generation, set redirect to True"))
+        }
+        return self._create_dynamic_response_model(extra_fields=extra_fields)

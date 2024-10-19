@@ -11,6 +11,7 @@ from rich.traceback import install
 from typing import List
 import json
 import asyncio
+import traceback
 
 install()
 
@@ -74,15 +75,15 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
 
     async def handle_message_response(response):
         try:
-            print('response', response)
-            
             if websocket.application_state == "DISCONNECTED" or websocket.client_state == "DISCONNECTED":
                 print("WebSocket is closed, skipping message sending")
                 return
-            
+            # print(type(response))
+            # print(response)
             await manager.send_message(json.dumps({"type": response['type'], "content": response['content']}), websocket)
         except Exception as e:
-            # print(f"Error occurred: {str(e)}")
+            print(f"Weird error: {str(e)}")
+            # traceback.print_exc()
             try:
                 if websocket.application_state != "DISCONNECTED" and websocket.client_state != "DISCONNECTED":
                     await manager.send_message(json.dumps({"type": "error", "content": str(e)}), websocket)
@@ -104,8 +105,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
 
                 if message_type == "message":
                     try:
-                        response = await mediator.handle_message(client_id, chat_id, message_content)
-                        await manager.send_message(json.dumps({"type": "message", "content": response}), websocket)
+                        await mediator.handle_message(client_id, chat_id, message_content)
+                        # await manager.send_message(json.dumps({"type": "message", "content": response}), websocket)
                     except ValidationError as ve:
                         print(ve)
                         await manager.send_message(json.dumps({"type": "validation_error", "content": str(ve)}), websocket)
