@@ -69,18 +69,6 @@ class Executor:
             if "agent" in task["tool"].lower():
                 print("\033[32mAgent task:\033[0m")
                 pprint(task)
-                # result = await self.tasks_state_model.get_task_result(task["id"])
-                # if result:
-                #     print(f"Result for agent {task['tool']} found in DB.")
-                #     self.observations[task["id"]] = result
-                #     continue  # Skip if the agent result is already available
-
-                # If agent hasn't been called and no dependencies, call it
-                # if not task["dependencies"]:
-                #     print("\033[32mNo dependencies for agent task\033[0m",task["tool"], task["id"])
-                #     await self._process_agent_task(task)
-                #     return
-
                 # If dependencies exist, process them
                 if all(dep in self.observations for dep in task["dependencies"]):
                     if self.observations.get(task["id"]):
@@ -92,10 +80,6 @@ class Executor:
                     if task["tool"] in self.called_agents and not self.observations.get(task["id"]):
                         try:
                             print("\033[32mAgent was called before:\033[0m", task["tool"], task["id"])
-                            # if self.observations[task["id"]]:
-                            #     print(f"Result for agent {task['tool']} found in DB.")
-                            #     self.observations[task["id"]] = result
-                            #     continue  # Skip if the agent result is already available
                             # Agent already called, collect results
                             dependencies_results = [
                                 self.observations[dep] for dep in task["dependencies"]
