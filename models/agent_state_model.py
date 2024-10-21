@@ -27,6 +27,7 @@ class AgentStateModel:
             self.state = state
 
     async def save_state(self):
+        # print('save state', self.state)
         await self.mongo_service.update_agent_state(self.client_id, self.chat_id, self.agent_name, self.state)
 
     def save_user_requirements(self, user_requirements: dict):
@@ -59,6 +60,20 @@ class AgentStateModel:
             last_plan = self.state['plan'][-1]
             return last_plan.get('tasks', [])
         return []
+    
+    async def get_all_tasks_ids(self) -> list:
+        return await self.mongo_service.get_all_tasks_ids(self.client_id, self.chat_id)
+    
+    async def update_agent_plan(self, tasks: list):
+        if self.is_plan_exists() and 'plan' in self.state:
+            last_plan = self.state['plan'][-1]
+            
+            last_plan['tasks'] = tasks
+            
+            print("\033[32mPlan updated:\033[0m", last_plan)
+            await self.save_state()
+        else:
+            print("\033[31mNo plan exists to update\033[0m")
 
     def get_user_requirements(self):
         return self.state.get('user_requirements')

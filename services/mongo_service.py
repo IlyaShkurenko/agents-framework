@@ -166,7 +166,23 @@ class MongoService:
             client_id (str): The unique client identifier.
             state (dict): The state to update.
         """
-        await self._update_state({'client_id': client_id, 'chat_id': chat_id}, state, 'mediator_states')      
+        await self._update_state({'client_id': client_id, 'chat_id': chat_id}, state, 'mediator_states')     
+
+    async def get_all_tasks_ids(self, client_id: str, chat_id: str):
+        agents_results = await self.agent_collection.find({'client_id': client_id, 'chat_id': chat_id}).to_list(None)
+        all_task_ids = []
+
+        for agent in agents_results:
+            if 'plan' in agent and agent['plan']:
+                last_plan = agent['plan'][-1]
+
+                tasks = last_plan.get('tasks', [])
+
+                task_ids = [task['id'] for task in tasks if 'id' in task]
+
+                all_task_ids.extend(task_ids)
+
+        return all_task_ids
 
     async def delete_message(self, client_id: str, chat_id: str, message_content: str):
         """
@@ -177,4 +193,4 @@ class MongoService:
             chat_id (str): The unique chat identifier.
             message_content (str): The content of the message to delete.
         """
-        await self.agent_collection.update_one({'client_id': client_id, 'chat_id': chat_id}, {'$pull': {'conversation_history': {'content': message_content}}})
+        await self.agent_collection.update_many({'client_id': client_id, 'chat_id': chat_id}, {'$pull': {'conversation_history': {'content': message_content}}})

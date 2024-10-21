@@ -3,7 +3,7 @@
 from agents.hashtags_agent.tools.create_hashtags_tool import CreateHashtagsTool
 from core.base_agent_with_plan_approve import BaseAgentWithPlanApprove
 from core.base_component import BaseComponent
-from .tools.create_post_tool import CreatePostTool
+from .tools.joiner import JoinerTool
 from core.base_agent import BaseAgent
 from core.planner.main import Planner
 from core.executor import Executor
@@ -62,27 +62,26 @@ class InitAgent(BaseAgentWithPlanApprove):
         return "Agent responsible for initial interaction with the user. Collects user requirements and creates a plan for creation a social media content."
     
     def __init__(self, mediator, tools: Optional[List[Union[BaseComponent, BaseAgent]]] = None):
-        create_post_tool = CreatePostTool()
+        joiner_tool = JoinerTool()
         create_hashtags_tool = CreateHashtagsTool()
 
-        all_tools = [create_post_tool] + (tools or [])
+        all_tools = [joiner_tool, create_hashtags_tool] + (tools or [])
         super().__init__(mediator, all_tools)
-        self.executor = Executor(tools=[create_post_tool, create_hashtags_tool], agent=self)
+        self.executor = Executor(tools=all_tools, agent=self)
         self.openai_service = OpenAIService(agent_name=self.name)
         self.planner_example = PLANNER_EXAMPLE
         self.planner = Planner(tools=all_tools, examples=self.planner_example)
         self.questionnaire_prompt = INIT_PROMPT
-        self.has_joiner = False
         self.status = None     
         self.user_requirements_schema = UserRequirements
         self.include_overview = True
         self.include_plan_action = False
 
-    def get_response_model(self):
-        extra_fields = {
-            "redirect": (bool, Field(..., description="If user asks non related to image generation, set redirect to True"))
-        }
-        return self._create_dynamic_response_model(extra_fields=extra_fields)
+    # def get_response_model(self):
+    #     extra_fields = {
+    #         "redirect": (bool, Field(..., description="If user asks non related to image generation, set redirect to True"))
+    #     }
+    #     return self._create_dynamic_response_model(extra_fields=extra_fields)
     
 
 

@@ -33,12 +33,12 @@ class Neo4jService:
 
     @staticmethod
     async def _create_or_update_agent(tx, agent_name, description, plan_summary, task_id):
-        print('agent_name',agent_name)
+        print("\033[1;33mCreate or update agent:\033[0m", agent_name)
         await tx.run("""
-            MERGE (a:AGENT {name: $agent_name})
+            MERGE (a:AGENT {task_id: $task_id})
             SET a.description = $description,
                 a.plan_summary = $plan_summary,
-                a.task_id = coalesce(a.task_id, $task_id)
+                a.name = $agent_name
         """, agent_name=agent_name, description=description, plan_summary=plan_summary, task_id=task_id)
 
     async def create_or_update_tool(self, tool_name: str, description: str, task_id: str):
@@ -48,9 +48,9 @@ class Neo4jService:
     @staticmethod
     async def _create_or_update_tool(tx, tool_name, description, task_id):
         await tx.run("""
-            MERGE (t:TOOL {name: $tool_name})
+            MERGE (t:TOOL {task_id: $task_id})
             SET t.description = $description,
-                t.task_id = $task_id
+                t.name = $tool_name
         """, tool_name=tool_name, description=description, task_id=task_id)
 
     async def create_action(self, action_id: str, description: str, arguments: List[dict]):
@@ -88,17 +88,17 @@ class Neo4jService:
                 MERGE (act1)-[:DEPENDS_ON]->(act2)
             """, action_id=action_id, dep_action_id=dep_action_id)
             
-    async def create_relationship(self, from_name: str, to_name: str, relationship_type: str):
+    async def create_relationship(self, from_id: str, to_id: str, relationship_type: str):
         async with self.driver.session() as session:
-            await session.write_transaction(self._create_relationship, from_name, to_name, relationship_type)
+            await session.write_transaction(self._create_relationship, from_id, to_id, relationship_type)
 
     @staticmethod
-    async def _create_relationship(tx, from_name: str, to_name: str, relationship_type: str):
+    async def _create_relationship(tx, from_id: str, to_id: str, relationship_type: str):
         await tx.run(f"""
-						MATCH (a {{name: $from_name}})
-						MATCH (b {{name: $to_name}})
+						MATCH (a {{task_id: $from_id}})
+						MATCH (b {{task_id: $to_id}})
 						MERGE (a)-[:{relationship_type}]->(b)
-				""", from_name=from_name, to_name=to_name)
+				""", from_id=from_id, to_id=to_id)
         
     async def get_all_nodes_and_relationships(self):
         query = """

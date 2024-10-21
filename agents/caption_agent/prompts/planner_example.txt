@@ -10,4 +10,12 @@ Example 1:
       "value": "Generate a caption for an Instagram post about a vacation to Bali. The caption should be 10 words or less. Be creative and use emojis."
     }
   ]
-}]
+},
+{
+  "id": "32412460",
+  "tool": "join",
+  "description": "Passing the results of caption creation for vacation to Bali for join analysis",
+  "dependencies": ["32412459"],
+  "arguments": []
+}
+]

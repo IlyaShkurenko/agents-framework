@@ -2,7 +2,7 @@ from core.base_agent import BaseAgent
 from core.base_agent_with_plan_approve import BaseAgentWithPlanApprove
 from core.base_component import BaseComponent
 from core.executor import Executor
-from core.joiner import Joiner
+from core.joiner.main import Joiner
 from core.planner.main import Planner
 from services.openai_service import OpenAIService
 from pydantic import BaseModel, Field, create_model
@@ -35,18 +35,18 @@ with open(file_path, 'r') as file:
 #     summary: str = Field(..., description="Brief Summary of the user's requirements. This info will be used by next agent to create a plan. If user mentioned sequence of actions then include it in summary so plan can be correct. Change it only if new requirements are provided otherwise leave it as is. Start with 'User decided to'")
 
 class UserRequirements(BaseModel):
-    content_uploaded: bool = Field(False)
-    visual_content_action: Literal['edit', 'generate', 'no_needed'] = Field(..., description="Action on visual content. Suggest edit only if user has uploaded content like image or video")
-    generate_image: bool = Field(False)
-    generate_video: bool = Field(False)
-    edit_video: bool = Field(False)
-    edit_image: bool = Field(False)
-    combine_images: bool = Field(False)
-    combine_videos: bool = Field(False)
-    add_text_overlay: bool = Field(False)
-    add_special_effect: bool = Field(False)
-    add_music: bool = Field(False)
-    add_voice_over: bool = Field(False)
+    # content_uploaded: bool = Field(...)
+    visual_content_action: Literal['edit', 'generate', 'no_needed'] = Field(...)
+    generate_image: bool = Field(...)
+    # generate_video: bool = Field(...)
+    # edit_video: bool = Field(...)
+    # edit_image: bool = Field(...)
+    # combine_images: bool = Field(...)
+    # combine_videos: bool = Field(...)
+    # add_text_overlay: bool = Field(...)
+    # add_special_effect: bool = Field(...)
+    # add_music: bool = Field(...)
+    # add_voice_over: bool = Field(...)
     summary: str = Field(..., description="Brief Summary of the user's requirements. This info will be used by next agent to create a plan. If user mentioned sequence of actions then include it in summary so plan can be correct. Change it only if new requirements are provided otherwise leave it as is. Start with 'User decided to'")
 
 class VisualEffectsAgent(BaseAgentWithPlanApprove):
@@ -64,23 +64,24 @@ class VisualEffectsAgent(BaseAgentWithPlanApprove):
 
     def __init__(self, mediator, tools: Optional[List[Union[BaseComponent, BaseAgent]]] = None):
         super().__init__(mediator, tools or [])
+        joiner_tool = Joiner()
+        all_tools = [joiner_tool] + (tools or [])
         self.openai_service = OpenAIService(agent_name=self.name)
         self.planner_example = PLANNER_EXAMPLE
-        self.planner = Planner(tools=self.tools, examples=self.planner_example)
+        self.planner = Planner(tools=all_tools, examples=self.planner_example)
         self.include_overview = True
-        self.executor = Executor(tools=self.tools, agent=self)
+        self.executor = Executor(tools=all_tools, agent=self)
         self.status = None
         self.questionnaire_prompt = VISUAL_EFFECTS_PROMPT
         self.initial_message = None
         self.joiner = Joiner()
-        self.has_joiner = True
         self.user_requirements_schema = UserRequirements
         self.include_plan_action = False
 
     def get_response_model(self):
         # Add custom field `redirect` for this agent
         extra_fields = {
-            "redirect": (bool, Field(..., description="If user asks non-related to visual effects generation or editing, set redirect to True."))
+            # "redirect": (bool, Field(..., description="If user asks non-related to visual effects generation or editing, set redirect to True."))
         }
         # Create dynamic response model with extra fields
         return self._create_dynamic_response_model(extra_fields=extra_fields)

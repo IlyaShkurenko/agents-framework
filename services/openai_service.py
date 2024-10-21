@@ -6,6 +6,21 @@ import openai
 import json
 from pydantic import BaseModel
 
+async def openai_structured_outputs_stream(**kwargs):
+    client = openai.AsyncOpenAI()
+
+    async with client.beta.chat.completions.stream(
+        **kwargs, stream_options={"include_usage": True}
+    ) as stream:
+        async for chunk in stream:
+            if chunk.type == 'chunk':
+                latest_snapshot = chunk.to_dict()['snapshot']
+                latest_parsed = latest_snapshot['choices'][0]['message'].get('parsed', {})
+                # latest_usage = latest_snapshot.get('usage', {})
+                # latest_json = latest_snapshot['choices'][0]['message']['content']
+
+                yield latest_parsed
+
 class OpenAIService:
     """
     This class handles interactions with the OpenAI API, optionally using a schema to parse the response.
@@ -53,23 +68,31 @@ class OpenAIService:
 
         # If response_schema is provided, use the parsing method
         if response_schema:
-            completion = await self.client.beta.chat.completions.parse(
-                model="gpt-4o-2024-08-06",  # Example model
+            # completion = await self.client.beta.chat.completions.parse(
+            #     model="gpt-4o-2024-08-06",  # Example model
+            #     messages=openai_messages,
+            #     response_format=response_schema
+            # )
+
+            # result = completion.choices[0].message.parsed
+            async for parsed_completion in openai_structured_outputs_stream(
+                model="gpt-4o-2024-08-06",
                 messages=openai_messages,
                 response_format=response_schema
-            )
-
-            result = completion.choices[0].message.parsed
+            ):
+                result = parsed_completion
+                # print("Current result field:", result)
         else:
             # Use the standard method if no schema is provided
             completion = await self.client.chat.completions.create(
                 model="gpt-4o",  # Example model
                 messages=openai_messages
             )
-            result = completion.choices[0].message
+            result = completion.choices[0].message.content
             
 				#save result to history
         if response_schema:
+            result = response_schema(**result) #to pedantic model
             content = result.message if hasattr(result, 'message') and result.message else result.model_dump_json()
         else:
             content = result

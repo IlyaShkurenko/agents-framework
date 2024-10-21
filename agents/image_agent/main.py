@@ -58,10 +58,10 @@ class ImageAgent(BaseAgent):
         return "An agent that handles image generation and editing."
     
     def __init__(self, mediator, tools: Optional[List[Union[BaseComponent, BaseAgent]]] = None):
-        self.generate_image_tool = GenerateImageTool()
-        super().__init__(mediator, [self.generate_image_tool] + (tools or []))
+        generate_image_tool = GenerateImageTool()
+        super().__init__(mediator, [generate_image_tool] + (tools or []))
         self.openai_service = OpenAIService(agent_name=self.name)
-        self.executor = Executor(tools=[self.generate_image_tool], agent=self)
+        self.executor = Executor(tools=[generate_image_tool], agent=self, last_tool_name=generate_image_tool.name)
         self.include_overview = False
         self.planner = Planner(tools=self.tools, examples=PLANNER_EXAMPLE)
         self.questionnaire_prompt = IMAGE_PROMPT
@@ -70,6 +70,6 @@ class ImageAgent(BaseAgent):
         
     def get_response_model(self):
         extra_fields = {
-            "redirect": (bool, Field(..., description="If user asks non related to image generation, set redirect to True"))
+            # "redirect": (bool, Field(..., description="If user asks non related to image generation, set redirect to True"))
         }
         return self._create_dynamic_response_model(extra_fields=extra_fields)

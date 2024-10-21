@@ -2,6 +2,7 @@ from agents.hashtags_agent.tools.create_hashtags_tool import CreateHashtagsTool
 from core.base_agent import BaseAgent
 from core.base_component import BaseComponent
 from core.executor import Executor
+from core.joiner.main import Joiner
 from core.planner.main import Planner
 from services.openai_service import OpenAIService
 from pydantic import BaseModel, Field, create_model
@@ -12,11 +13,13 @@ import asyncio
 # Load the prompt
 file_path = os.path.join(os.path.dirname(__file__), 'prompts', 'create_hashtags_prompt.txt')
 planner_example_file_path = os.path.join(os.path.dirname(__file__), 'prompts', 'planner_example.txt')
-
+joiner_example_file_path = os.path.join(os.path.dirname(__file__), 'prompts', 'joiner_example.txt')
 with open(planner_example_file_path, 'r') as file:
     PLANNER_EXAMPLE = file.read()
 with open(file_path, 'r') as file:
     HASHTAGS_PROMPT = file.read()
+with open(joiner_example_file_path, 'r') as file:
+    JOINER_EXAMPLE = file.read()
 
 class UserRequirements(BaseModel):
     topic: Optional[str] = Field(
@@ -26,10 +29,6 @@ class UserRequirements(BaseModel):
     target_audience: Optional[str] = Field(
         None,
         description="The specific audience the hashtags should target (e.g., 'millennials', 'tech enthusiasts', 'yoga lovers')."
-    )
-    tone: Optional[Literal['formal', 'informal', 'humorous', 'inspirational']] = Field(
-        None,
-        description="The tone or style of the hashtags (e.g., 'humorous', 'inspirational')."
     )
     keywords: Optional[List[str]] = Field(
         default_factory=list,
@@ -54,10 +53,12 @@ class HashtagsAgent(BaseAgent):
         return "An agent that handles hashtags generation."
     
     def __init__(self, mediator, tools: Optional[List[Union[BaseComponent, BaseAgent]]] = None):
-        self.create_hashtags_tool = CreateHashtagsTool()
-        super().__init__(mediator, [self.create_hashtags_tool] + (tools or []))
+        create_hashtags_tool = CreateHashtagsTool()
+        joiner = Joiner(JOINER_EXAMPLE)
+        agent_tools = [create_hashtags_tool, joiner]
+        super().__init__(mediator, agent_tools + (tools or []))
         self.openai_service = OpenAIService(agent_name=self.name)
-        self.executor = Executor(tools=[self.create_hashtags_tool], agent=self)
+        self.executor = Executor(tools=agent_tools, agent=self)
         self.include_overview = False
         self.planner = Planner(tools=self.tools, examples=PLANNER_EXAMPLE)
         self.questionnaire_prompt = HASHTAGS_PROMPT
@@ -65,7 +66,7 @@ class HashtagsAgent(BaseAgent):
         self.status = None
 
     def get_response_model(self):
-        extra_fields = {
-            "redirect": (bool, Field(..., description="If user asks non related to hashtags generation, set redirect to True"))
-        }
-        return self._create_dynamic_response_model(extra_fields=extra_fields)
+        # extra_fields = {
+        #     "redirect": (bool, Field(..., description="If user asks non related to hashtags generation, set redirect to True"))
+        # }
+        return self._create_dynamic_response_model(extra_fields={})

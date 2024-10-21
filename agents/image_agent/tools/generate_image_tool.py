@@ -31,15 +31,13 @@ class GenerateImageTool(BaseComponent):
     def description(self):
         return "Tool for generating an image based on a prompt."
 
-    async def execute(self, state: dict):
+    async def execute(self, message: str):
         """
         Generates an image based on the provided prompt and returns the image URL.
         """
         await self.runware.connect()
+        print('message in generate image tool', message)
 
-        image_requirements = state.get('image_requirements', "")
-        message = f"Generate a prompt for an image generation model based on the following requirements: {image_requirements}"
-        
         assistant_response = await self.openai_service.get_response(
             conversation_history=[], 
             system_prompt=INIT_PROMPT, 
@@ -63,6 +61,6 @@ class GenerateImageTool(BaseComponent):
         print('images', images)
 
         if images:
-            return {"image_url": images[0].imageURL}
+            return {"image_url": images[0].imageURL, 'is_done': True}
         else:
             raise ValueError("No images generated.")

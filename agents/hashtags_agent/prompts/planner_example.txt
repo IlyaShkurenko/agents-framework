@@ -10,4 +10,11 @@ Example 1:
       "value": "Generate hashtags for an Instagram post about a vacation to Bali. Use instagram hashtags format. Use 10 hashtags or less."
     }
   ]
+},
+{
+  "id": "32412460",
+  "tool": "join",
+  "description": "Passing the results of hashtags creation for vacation to Bali for join analysis",
+  "dependencies": ["32412459"],
+  "arguments": []
 }]

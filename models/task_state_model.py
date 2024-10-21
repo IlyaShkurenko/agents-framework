@@ -1,3 +1,4 @@
+import copy
 from typing import Optional, List, Dict
 from services.mongo_service import MongoService
 
@@ -21,19 +22,19 @@ class TasksStateModel:
             self.state = state
 
     async def save_task_result(self, task_id: int, result: dict):
-        state = await self._get_or_load_state()
-
+        state = await self.get_or_load_state()
+        print('state', state['tasks'])
         for task in state["tasks"]:
             if task["id"] == task_id:
                 task["result"] = result
                 break
         else:
             state["tasks"].append({"id": task_id, "result": result})
-
+        self.state = state
         await self._update_state()
 
     async def get_task_result(self, task_id: int) -> Optional[dict]:
-        state = await self._get_or_load_state()
+        state = await self.get_or_load_state()
 
         for task in state["tasks"]:
             if task["id"] == task_id:
@@ -41,14 +42,14 @@ class TasksStateModel:
 
         return None
 
-    async def task_exists(self, task_id: int) -> bool:
-        state = await self._get_or_load_state()
-        return any(task["id"] == task_id for task in state["tasks"])
+    # async def task_exists(self, task_id: int) -> bool:
+    #     state = await self.get_or_load_state()
+    #     return any(task["id"] == task_id for task in state["tasks"])
 
-    async def _get_or_load_state(self) -> dict:
+    async def get_or_load_state(self) -> dict:
         if self.state is None:
             await self.load_state()
-        return self.state
+        return copy.deepcopy(self.state)
 
     async def update_tasks_state(self):
         await self.mongo_service.update_tasks_state(

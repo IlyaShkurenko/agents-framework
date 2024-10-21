@@ -1,5 +1,6 @@
 # core/planner.py
 
+import os
 import openai
 from typing import List, Union
 
@@ -34,6 +35,10 @@ def create_dynamic_response_model(include_overview: bool = False):
         return AssistantResponse
 
 
+joiner_instructions_file_path = os.path.join(os.path.dirname(__file__), 'prompts', 'joiner_instructions.txt')
+with open(joiner_instructions_file_path, 'r') as file:
+    JOINER_INSTRUCTIONS = file.read()
+
 class Planner:
     """
     The Planner uses the LLM to generate a plan (list of tasks) based on the user's query.
@@ -42,7 +47,11 @@ class Planner:
     def __init__(self, tools: List, examples: str = ""):
         self.tools = tools
         self.examples = examples
+        self.agent_state_model = None
         self.openai_service = OpenAIService(agent_name='planner')
+
+    def set_agent_state_model(self, agent_state_model: BaseModel):
+        self.agent_state_model = agent_state_model
 
     async def create_plan(self, conversation_history: List, user_requirements: dict, replan: bool = False, include_overview: bool = False, replan_after_execution: Union[bool, None] = None, tasks_with_results: Union[List[dict], None] = None, executed_user_requirements: Union[dict, None] = None) -> tuple[List[dict], dict]:
         """
@@ -55,13 +64,18 @@ class Planner:
             List[Task]: A list of Task objects representing the plan.
         """
         tool_descriptions = "\n".join(
-            f"{i+1}. {tool.description}" for i, tool in enumerate(self.tools)
+            f"{i+1}: {tool.name} - {tool.description}" for i, tool in enumerate(self.tools)
         )
+        existing_tasks_ids = await self.agent_state_model.get_all_tasks_ids()
+
+        join_included = any("join" in tool.name for tool in self.tools)
 
         prompt = PLANNER_PROMPT.format(
             num_tools=len(self.tools),
             tool_descriptions=tool_descriptions,
-            examples=self.examples
+            examples=self.examples,
+            existing_tasks_ids=existing_tasks_ids,
+            joiner_instructions=JOINER_INSTRUCTIONS if join_included else ""
         )
 
         print('executed_user_requirements', executed_user_requirements)

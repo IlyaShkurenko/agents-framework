@@ -10,7 +10,20 @@ Example 1:
       "value": "Generate a caption about a vacation to Bali"
     }
   ]
-}]
+},
+{
+    "id": "32412462",
+    "description": "Passing the results of caption creation for vacation to Bali for join analysis",
+    "dependencies": ["32412459"],
+    "tool": "join",
+		"arguments": [
+			{
+				"name": "prompt",
+				"value": "Create an Instagram post using the generated caption."
+			}
+		]
+  }
+]
 
 Example 2:
 [{
@@ -24,7 +37,15 @@ Example 2:
       "value": "Cut video on moment when the sunset is on the ocean and add a user's voice saying 'wow' to the end of the video"
     }
   ]
-}]
+},
+{
+    "id": "32412462",
+    "description": "Passing the results of visual effects creation for cutting video for join analysis",
+    "dependencies": ["32412459"],
+    "tool": "join",
+		"arguments": []
+  }
+]
 
 Example 3:
 [
@@ -54,9 +75,9 @@ Example 3:
   },
   {
     "id": "32412462",
-    "description": "Call the create_post_tool with the caption and hashtags to create the final Instagram post.",
+    "description": "Call the join tool with the caption and hashtags to create the final Instagram post.",
     "dependencies": ["32412460", "32412461"],
-    "tool": "create_post_tool",
+    "tool": "join",
 		"arguments": [
 			{
 				"name": "prompt",

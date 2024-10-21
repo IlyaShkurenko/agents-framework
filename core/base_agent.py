@@ -1,12 +1,14 @@
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 from pydantic import Field, create_model
 from core.base_component import BaseComponent
 from abc import ABC, abstractmethod
 import asyncio
-from core.joiner import Joiner
+from core.joiner.main import Joiner
 from models.agent_state_model import AgentStateModel
 import json
 import copy
+
+from models.task_state_model import TasksStateModel
 class BaseAgent(BaseComponent):
     """
     Base class for all agents.
@@ -21,6 +23,7 @@ class BaseAgent(BaseComponent):
         self.include_result_accepted = False
         self.include_plan_action = False
         self.initial_message = None
+        self.result = None
 
     async def set_client_data(self, client_id: str, chat_id: str):
         """
@@ -29,8 +32,9 @@ class BaseAgent(BaseComponent):
         self.client_id = client_id
         self.chat_id = chat_id
         self.state_model = AgentStateModel(client_id, chat_id, self.name)
+        self.tasks_state_model = TasksStateModel(client_id, chat_id)
+        self.planner.set_agent_state_model(self.state_model)
         await self._load_state()
-
     # Helper method to save initial message
     def _save_initial_message(self, message: str):
         if not self.initial_message:
@@ -63,10 +67,6 @@ class BaseAgent(BaseComponent):
         self.state_model.save_agent_plan(plan)
 
     def _save_agent_status(self, status):
-        if status == 'waiting_for_approval':
-            self.include_result_accepted = True
-        else:
-            self.include_result_accepted = False  
         self.state_model.save_agent_status(status)
 
     def _is_plan_exists(self):
@@ -85,12 +85,19 @@ class BaseAgent(BaseComponent):
         await self.state_model.save_state()
 
     def _is_executing(self):
-        return self.state_model.get_agent_status() == "execution" or self.state_model.get_agent_status() == "pending" and len(self.tasks) > 0
+        return self.state_model.get_agent_status() == "execution" and len(self.tasks) > 0
 
     async def _load_state(self):
+        print('load state', self.name)
         await self.state_model.load_state()
         self.tasks = self.state_model.get_tasks()
-        print('tasks in load state', self.tasks)
+        self.executor.set_tasks_state_model(self.tasks_state_model)
+        self.executor.set_tasks(self.tasks)
+        print('tasks loaded in state', self.tasks)
+        agent_status = self._get_agent_status()
+        if self.tasks and (agent_status == "waiting_for_approval" or agent_status == "completed"):
+            self.result = await self.tasks_state_model.get_task_result(self.tasks[-1]['id'])
+            print('result loaded', self.result)
 
 
     async def execute(self, **kwargs):
@@ -115,11 +122,30 @@ class BaseAgent(BaseComponent):
             assistant_response = await self.run_questionnaire(message)
             return await self.handle_assistant_response(assistant_response)
         else:
-            return await self._execute_plan_and_finalize(self.tasks)
+            return await self._execute_plan_and_finalize(tasks=self.tasks, resume_execution=True)
+        
+    def if_result_accepted(self, assistant_response):
+        result_accepted = getattr(assistant_response, 'result_accepted', False)
+        if result_accepted:
+            self._save_agent_status('completed')
+            asyncio.create_task(self.mediator.on_agent_done(self.name, self.result))
+            return True
+        return False
     
     async def handle_assistant_response(self, assistant_response):
+        if self.if_result_accepted(assistant_response):
+            print('result accepted')
+            if assistant_response.message:
+                self._emit_assistant_message(assistant_response.message)
+            return
+        
         if assistant_response.message:
             self._emit_assistant_message(assistant_response.message)
+            #question from assistant
+            if '?' in assistant_response.message:
+                print("\033[34mQuestion from assistant:\033[0m")
+                return
+                
         if assistant_response.user_requirements:
             return await self.process_user_requirements(assistant_response)
         
@@ -140,10 +166,7 @@ class BaseAgent(BaseComponent):
         print('result_accepted', result_accepted)
 
         print('replan_after_execution', replan_after_execution)
-        if result_accepted:
-            self._save_agent_status('completed')
-            self.mediator.on_agent_done(self.name)
-            return assistant_response.message
+            # return assistant_response.message
             
         return need_replan, replan_after_execution, previous_user_requirements
         
@@ -154,7 +177,7 @@ class BaseAgent(BaseComponent):
         await self._create_and_save_plan(need_replan=need_replan, 
                                          replan_after_execution=replan_after_execution, tasks_with_results=self.executor.get_tasks_with_results(), executed_user_requirements=previous_user_requirements)
         
-        final_response = await self._execute_plan_and_finalize(self.tasks)
+        final_response = await self._execute_plan_and_finalize(tasks=self.tasks)
         return final_response
     
     async def _create_and_save_plan(self, need_replan, replan_after_execution, tasks_with_results, executed_user_requirements):
@@ -186,34 +209,47 @@ class BaseAgent(BaseComponent):
 
         self._save_plan(plan_response_dict)
 
-        asyncio.create_task(self.mediator.emit_plan(
-            plan=plan_response_dict,
+        task = asyncio.create_task(self.mediator.emit_plan(
+            plan=copy.deepcopy(plan_response_dict['tasks']),
             summary=user_requirements['summary'],
             agent_name=self.name
         ))
-        await asyncio.sleep(0)
+        task.add_done_callback(
+            lambda t: print("\033[32mTask completed successfully\033[0m") 
+            if not t.exception() 
+            else print(f"\033[31mTask emit_plan failed with error:\033[0m {t.exception()}")
+        )
 
         return plan_response_dict
-
-    async def _execute_plan_and_finalize(self, tasks: List[dict]):
-        self.executor.set_tasks_state_model(self.mediator.mediator_tasks_state_model)
-        self._save_agent_status("execution")
-        self.mediator.emit_message('execution_started')
-        final_response = await self.executor.execute_plan(tasks)
-
-        if self.has_joiner:
-            final_response = await self.joiner.join(initial_message=self.initial_message, final_response=final_response)
-        print('in execute plan and finalize')
-        print('final_response', final_response)
-        self._add_message_to_conversation_history(final_response)
-        # self._save_agent_status('waiting_for_approval')
-
-        if isinstance(final_response, str):
-            self._emit_assistant_message(final_response)
-
-        return final_response
     
-    def on_agent_execute(self):
+    async def _execute_plan_and_finalize(self, tasks: List[dict], resume_execution: bool = False):
+        final_response = None
+
+        if resume_execution:
+            final_response = await self.executor.resume_execution(self.tasks)
+        else:
+            self._save_agent_status("execution")
+            self.mediator.emit_message('execution_started')
+            final_response = await self.executor.execute_plan(tasks)
+        
+        print("\033[31mThis final response\033[0m", final_response)
+        if final_response:
+            self.on_agent_execute(final_response)
+            if isinstance(final_response, str):
+                self._emit_assistant_message(final_response)
+                self._add_message_to_conversation_history(final_response)
+            elif isinstance(final_response, dict) and final_response.get('is_done'):
+                self._save_agent_status('completed')
+                asyncio.create_task(self.mediator.on_agent_done(self.name, final_response))
+                self._emit_assistant_message(final_response)
+                self._add_message_to_conversation_history(json.dumps(final_response, indent=4))
+                return
+            return final_response
+    
+    def on_agent_execute(self, result):
+        self.result = result
+        # if self.na
+        print('result', self.result)
         self._save_agent_status('waiting_for_approval')
     
     async def run_questionnaire(self, message: str):
@@ -226,11 +262,9 @@ class BaseAgent(BaseComponent):
         Returns:
             AssistantResponse: The parsed response from the assistant.
         """
-        self._save_agent_status("questionnaire")
+        print('in run questionnaire')
         history = self._get_conversation_history()
         response_model = self.get_response_model()
-
-        print("\033[34mResponse model:\033[0m", response_model)
 
         assistant_response = await self.openai_service.get_response(
             conversation_history=history,
@@ -238,6 +272,7 @@ class BaseAgent(BaseComponent):
             message=message,
             response_schema=response_model
         )
+        self._save_agent_status("questionnaire")
         print('assistant_response', assistant_response)
         return assistant_response
 
@@ -256,78 +291,52 @@ class BaseAgent(BaseComponent):
 
         print('in process agent task', agent_name, task_id, arguments)
 
-        asyncio.create_task(
-            self.mediator.add_agent_to_call_stack(
-                parent_agent=self.name,
-                agent_name=agent_name,
-                task_id=task_id,
-                message=arguments
-            )
+        
+        await self.mediator.add_agent_to_call_stack(
+            parent_agent=self.name,
+            agent_name=agent_name,
+            task_id=task_id,
+            message=arguments
         )
-        await asyncio.sleep(0)
-        # await self.mediator.add_agent_to_call_stack(
-        #         parent_agent=self.name,
-        #         agent_name=agent_name,
-        #         task_id=task_id,
-        #         message=arguments
-        #     )
-        self._save_agent_status("pending")
-        self.mediator.emit_message('redirecting')
         return f"Task for {agent_name} added to call stack with message"
     
-    def add_agent_task_to_dependencies(self, task_id: int):
+    def set_previous_agent_result(self, previous_agent_result):
+        self.executor.set_previous_agent_result(previous_agent_result)
+    
+    async def add_agent_task_to_dependencies(self, agent_name, task_id: int, task_name: str):
         """
         Add the agent task to the dependencies.
         """
-        self.executor.add_agent_task_to_dependencies(self.name, task_id)
+        print('add agent task to dependencies')
+        self.tasks = self.executor.add_agent_task_to_dependencies(agent_name, task_id, task_name)
+        await self.state_model.update_agent_plan(self.tasks)
 
     def _create_dynamic_response_model(self, extra_fields: dict[str, Any] = None):
         dynamic_fields = extra_fields or {}
         
         print("\033[34mIs plan exists:\033[0m", self._is_plan_exists())
-
+        print(self._get_agent_status())
         print("\033[34mIs waiting for approval:\033[0m", self._get_agent_status() == 'waiting_for_approval')
 
         user_requirements_description = (
             "User's requirements in structured form. "
-            "only if all information is provided, otherwise None. Update it only if user have changed something otherwise return previous user_requirements if they exists. Remember to always return if was provided before"
-        )   
+            "only if all information is provided, otherwise None. Update it only if user have changed something otherwise return previous user_requirements if they exists.Always exists if user_requirements_status is 'changed' or 'approved' or 'unchanged'. None if user_requirements_status is 'incomplete'. Remember to only update user_requirements if user_requirements_status is changed and leave it unchanged otherwise."
+        )  
 
-        # print('include_plan_action', self.include_plan_action)
-
-        # if self.include_plan_action:
-        #     dynamic_fields['plan_approved'] = (bool, Field(..., description="True if the user explicitly confirms that he want to proceed with the plan as is. False if the user asks any questions, requests clarifications, or indicates that he wants to adjust the plan."))
-        if self.include_result_accepted:
+        is_waiting_for_approval = self._get_agent_status() == 'waiting_for_approval'
+        if is_waiting_for_approval:
             dynamic_fields['result_accepted'] = (bool, Field(..., description="True if the user explicitly confirms that he want to proceed with the result as is. False if the user asks any questions, requests clarifications, or indicates that he wants to adjust the result."))
-            # dynamic_fields['changes_to_apply'] = (str, Field(..., description="Changes to apply to the result if the user wants to adjust the result. Otherwise, it should be empty ''. Exists only if result_accepted is False"))
             user_requirements_description += " If result_accepted is False then be sure to provide a new requirements."
-        
 
         # Create a new model with dynamic fields first, followed by the base fields
         response_model = create_model(
             'DynamicAssistantResponse',
             **dynamic_fields,  # Insert dynamic fields first
+            user_requirements_status=(Literal["incomplete", "changed", "approved", "unchanged"], Field(None, description="Status of the requirements. Can be 'changed' if the user modified requirements, 'approved' if they were accepted, 'unchanged' if nothing was changed, or 'incomplete' if the requirements are not gathered or missing information.")),
             user_requirements=(Optional[self.user_requirements_schema], Field(None, description=user_requirements_description)),
-            message=(Optional[str], Field(None, description="Assistant's message to the user.")),
+            message=(Optional[str], Field(None, description="Assistant message. Must exist if user_requirements_status is 'incomplete' or user_requirements is None. It is forbidden to return hashtags or caption or any social media content which user requests. Remember to include message if user_requirements is None")),
         )
         print("\033[33mResponse model fields:\033[0m")
         for field_name, field_info in response_model.model_fields.items():
             print(f"Field: {field_name}, Description: {field_info.description}")
         return response_model
-
-    # def on_agent_execute(self, agent_name: str):
-    #     """
-    #     Called when the agent is executed.
-    #     """
-    #     self.agents_done.add(agent_name)
-    #     self.mediator.on_agent_execute(agent_name)
-    #     agent_tasks = {
-    #         task["tool"] for task in self.tasks if "agent" in task["tool"].lower()
-    #     }
-    #     print("\033[34mAgents done:\033[0m")
-    #     pprint(self.agents_done)
-    #     print("\033[34mAgent tasks:\033[0m")
-    #     pprint(agent_tasks)
-    #     if agent_tasks.issubset(self.agents_done):
-    #         self.state_model.save_agent_status("completed")
-    #         self.mediator.on_agents_done(self.name)

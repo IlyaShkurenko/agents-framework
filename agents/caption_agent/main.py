@@ -1,6 +1,7 @@
 from core.base_agent import BaseAgent
 from core.base_component import BaseComponent
 from core.executor import Executor
+from core.joiner.main import Joiner
 from core.planner.main import Planner
 from services.openai_service import OpenAIService
 from .tools.create_caption_tool import CreateCaptionTool
@@ -66,18 +67,19 @@ class CaptionAgent(BaseAgent):
         return "An agent that handles caption generation with various styles."
 
     def __init__(self, mediator, tools: Optional[List[Union[BaseComponent, BaseAgent]]] = None):
-        self.create_caption_tool = CreateCaptionTool()
-        super().__init__(mediator, [self.create_caption_tool] + (tools or []))
+        create_caption_tool = CreateCaptionTool()
+        joiner = Joiner()
+        super().__init__(mediator, [create_caption_tool, joiner] + (tools or []))
         self.openai_service = OpenAIService(agent_name=self.name)
         self.planner = Planner(tools=self.tools, examples=PLANNER_EXAMPLE)
         self.include_overview = False
-        self.executor = Executor(tools=[self.create_caption_tool], agent=self)
+        self.executor = Executor(tools=[create_caption_tool, joiner], agent=self)
         self.status = None
         self.questionnaire_prompt = CAPTION_PROMPT
         self.user_requirements_schema = UserRequirements
 
     def get_response_model(self):
         extra_fields = {
-            "redirect": (bool, Field(..., description="If user asks non related to caption generation, set redirect to True"))
+            # "redirect": (bool, Field(..., description="If user asks non related to caption generation, set redirect to True"))
         }
         return self._create_dynamic_response_model(extra_fields=extra_fields)

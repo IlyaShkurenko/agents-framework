@@ -16,7 +16,7 @@ class CreateCaptionTool(BaseComponent):
 
     @property
     def name(self):
-        return "CreateCaptionTool"
+        return "create_caption_tool"
 
     @property
     def description(self):
