@@ -1,6 +1,7 @@
 # core/mediator.py
 
 import asyncio
+import os
 import random
 import re
 from typing import Any, List, Optional, Union
@@ -26,7 +27,9 @@ class Mediator:
         self.default_agent = 'init_agent'
         self.call_stack = []
         self.event_emitter = AsyncIOEventEmitter()
-        self.neo4j_service = Neo4jService(uri="neo4j+s://e9eac158.databases.neo4j.io", user="neo4j", password="W9GvvgDF2RYDrTtifjvAcbMK4-ukDCd4essDNxus3R4")
+        self.neo4j_service = Neo4jService(uri=os.getenv('NEO4J_URI'),
+            user=os.getenv('NEO4J_USER'),
+            password=os.getenv('NEO4J_PASSWORD'))
         self.agent_plans = []
         self.agents_tasks = {}
         self.client_id = None

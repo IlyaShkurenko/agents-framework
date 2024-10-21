@@ -1,6 +1,7 @@
 # services/mongo_service.py
 
 from datetime import datetime
+import os
 from motor.motor_asyncio import AsyncIOMotorClient
 
 class MongoService:
@@ -10,7 +11,7 @@ class MongoService:
 
     def __init__(self):
         # Replace with your MongoDB connection string
-        self.client = AsyncIOMotorClient('mongodb+srv://illiashkurenko98:3JYbiCLJXhLhJK5u@cluster0.66i1z.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0')
+        self.client = AsyncIOMotorClient(os.environ['MONGODB_CONNECTION_STRING'])
         self.db = self.client['chatbot_db']
         self.agent_collection = self.db['agent_states']
         self.mediator_collection = self.db['mediator_states']
