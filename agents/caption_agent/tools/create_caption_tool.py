@@ -25,7 +25,7 @@ class CreateCaptionTool(BaseComponent):
     def __init__(self):
         self.openai_service = OpenAIService(agent_name=self.name)
 
-    async def execute(self, message: str):
+    async def execute(self, message: str, conversation_history: list):
         """
         Generates a caption based on the state provided.
         """
@@ -33,9 +33,9 @@ class CreateCaptionTool(BaseComponent):
         prompt = f"Generate a caption for with the following details: {message}."
 
         response = await self.openai_service.get_response(
-            conversation_history=[],
+            conversation_history=conversation_history,
             system_prompt="You are an AI assistant that specializes in generating captions for social media posts. Provide a caption without any explanations or comments.",
             message=prompt,
             response_schema=AssistantResponse
         )
-        return response.caption
+        return response.caption, conversation_history

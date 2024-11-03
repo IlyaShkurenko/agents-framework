@@ -18,3 +18,24 @@ Example 1:
   "dependencies": ["32412459"],
   "arguments": []
 }]
+
+Example 2 for update existing results:
+[{
+  "id": "32412460",
+  "description": "Update the create_hashtags_tool prompt to include 'vacation' with 'travel' in the first 5 hashtags.",
+  "dependencies": [],
+  "tool": "create_hashtags_tool",
+  "arguments": [
+    {
+      "name": "prompt",
+      "value": "Adjust previous result to change the last hashtag to replace first 5 hashtags on hashtags which mention 'vacation' with 'travel'"
+    }
+  ]
+},
+{
+  "id": "32412461",
+  "tool": "join",
+  "description": "Passing the results of hashtags creation for vacation to Bali for join analysis",
+  "dependencies": ["32412460"],
+  "arguments": []
+}]

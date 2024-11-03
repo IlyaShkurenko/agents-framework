@@ -1,3 +1,4 @@
+Example 1: Generate an Image
 [{
   "id": "32412459",
   "description": "Call the generate_image_tool with the appropriate prompt with no dependencies",
@@ -9,4 +10,38 @@
       "value": "Generate an image of a cat with a funny hat and a sign saying 'I'm a cat'"
     }
   ]
-}]
+},
+{
+  "id": "32412461",
+  "tool": "join",
+  "description": "Passing the results of image generation for vacation to Bali for join analysis",
+  "dependencies": ["32412459"],
+  "arguments": []
+}
+]
+
+Example 2: Edit an existing Image
+[{
+  "id": "32412460",
+  "description": "Call the generate_image_tool with the appropriate prompt and seed image with no dependencies",
+  "dependencies": [],
+  "tool": "generate_image_tool",
+  "arguments": [
+    {
+      "name": "prompt",
+      "value": "Adjust previous result to make cat more cute"
+    },
+    {
+      "name": "seed_image",
+      "value": "https://im.runware.ai/image/ws/0.5/ii/76b7b4b3-65ed-4266-a7c0-287bfd7da490.jpg"
+    }
+  ]
+},
+{
+  "id": "32412462",
+  "tool": "join",
+  "description": "Passing the results of image generation for vacation to Bali for join analysis",
+  "dependencies": ["32412460"],
+  "arguments": []
+}
+]

@@ -19,3 +19,24 @@ Example 1:
   "arguments": []
 }
 ]
+
+Example 2 for update existing results:
+[{
+  "id": "32412461",
+  "description": "Update the create_caption_tool prompt to make in more engaging",
+  "dependencies": [],
+  "tool": "create_hashtags_tool",
+  "arguments": [
+    {
+      "name": "prompt",
+      "value": "Adjust previous result to make caption more engaging"
+    }
+  ]
+},
+{
+  "id": "32412462",
+  "tool": "join",
+  "description": "Passing the results of caption creation for vacation to Bali for join analysis",
+  "dependencies": ["32412461"],
+  "arguments": []
+}]

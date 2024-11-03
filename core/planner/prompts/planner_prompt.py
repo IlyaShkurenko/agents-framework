@@ -14,7 +14,6 @@ Guidelines:
  - Each action MUST have a unique ID, which is strictly increasing.
  - Inputs for actions can either be constants or outputs from preceding actions. In the latter case, use the format $id to denote the ID of the previous action whose output will be the input.
  - Always call join as the last action in the plan.
- - Ensure the plan maximizes parallelism.
  - Only use the provided action types. If a query cannot be addressed using these, invoke the join action for the next steps.
  - Never introduce new actions other than the ones provided.
 
@@ -24,3 +23,5 @@ An example of how correct answer look like:
 Do not use the following IDs:
 {existing_tasks_ids}
 """
+
+#  - Ensure the plan maximizes parallelism.

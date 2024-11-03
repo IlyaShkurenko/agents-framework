@@ -1,12 +1,12 @@
+from agents.visual_effects_agent.tools.joiner import Joiner
 from core.base_agent import BaseAgent
 from core.base_agent_with_plan_approve import BaseAgentWithPlanApprove
 from core.base_component import BaseComponent
 from core.executor import Executor
-from core.joiner.main import Joiner
 from core.planner.main import Planner
 from services.openai_service import OpenAIService
 from pydantic import BaseModel, Field, create_model
-from typing import List, Optional, Literal, Union
+from typing import List, Optional, Literal, Type, Union
 import os
 import asyncio
 
@@ -61,27 +61,43 @@ class VisualEffectsAgent(BaseAgentWithPlanApprove):
     @property
     def description(self):
         return "An agent that handles visual effects generation or editing."
+    
+    # @property
+    # def user_requirements_schema(self) -> Type[BaseModel]:
+    #     return UserRequirements
+    
+    @property
+    def questionnaire_prompt(self) -> str:
+        return VISUAL_EFFECTS_PROMPT
+    
+    @property
+    def include_overview(self) -> bool:
+        return True
 
     def __init__(self, mediator, tools: Optional[List[Union[BaseComponent, BaseAgent]]] = None):
         super().__init__(mediator, tools or [])
         joiner_tool = Joiner()
         all_tools = [joiner_tool] + (tools or [])
-        self.openai_service = OpenAIService(agent_name=self.name)
-        self.planner_example = PLANNER_EXAMPLE
-        self.planner = Planner(tools=all_tools, examples=self.planner_example)
-        self.include_overview = True
+        self.planner = Planner(tools=all_tools, examples=PLANNER_EXAMPLE)
         self.executor = Executor(tools=all_tools, agent=self)
-        self.status = None
-        self.questionnaire_prompt = VISUAL_EFFECTS_PROMPT
-        self.initial_message = None
-        self.joiner = Joiner()
-        self.user_requirements_schema = UserRequirements
-        self.include_plan_action = False
-
-    def get_response_model(self):
+        # We don't want to emit message on agent done for visual effects agent since it have only image agent as a dependency for now
+        self.emit_message_on_agent_done = False
+    
+    def get_questionnaire_response_model(self):
         # Add custom field `redirect` for this agent
         extra_fields = {
             # "redirect": (bool, Field(..., description="If user asks non-related to visual effects generation or editing, set redirect to True."))
         }
+        user_requirements_fields = {
+            "visual_content_action": (Literal['edit', 'generate', 'no_needed'], Field(
+                ...,
+                description="Specifies the action on visual content. Options: 'edit' if content already exists, 'generate' to create new content, 'no_needed' if no visual content is required."
+            )),
+            "generate_image": (bool, Field(
+                ...,
+                description="Indicates whether an image should be generated."
+            ))
+        }
+
         # Create dynamic response model with extra fields
-        return self._create_dynamic_response_model(extra_fields=extra_fields)
+        return self._create_dynamic_response_model(extra_fields=extra_fields, user_requirements_fields=user_requirements_fields)

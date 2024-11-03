@@ -1,13 +1,26 @@
 Example 1:
 [{
   "id": "32412459",
-  "description": "Call the image_generation_agent with the appropriate prompt with no dependencies",
+  "description": "Call the image_agent with the appropriate prompt with no dependencies",
   "dependencies": [],
-  "tool": "image_generation_agent",
+  "tool": "image_agent",
   "arguments": [
     {
       "name": "prompt",
       "value": "Generate an image of a cat"
     }
   ]
-}]
+},
+{
+    "id": "32412462",
+    "description": "Call the join tool with the image the final response",
+    "dependencies": ["32412459"],
+    "tool": "join",
+		"arguments": [
+			{
+				"name": "prompt",
+				"value": "Create an final response using the generated image"
+			}
+		]
+  }
+]

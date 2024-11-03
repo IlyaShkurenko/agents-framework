@@ -14,167 +14,69 @@ class BaseAgentWithPlanApprove(BaseAgent):
         super().__init__(mediator, tools or [])
     
     async def handle_message(self, message: str):
-        # content = {
-        #     'caption': "Oops, I Bali'd it again! 🌴🤣 Ready for a getaway? Book your escape to paradise today! 🌺✨ #BaliRetreat #EscapeTheOrdinary",
-        #     'hashtags': ['#BaliRetreat', '#TravelGoals', '#IslandLife', '#Wanderlust', '#AdventureAwaits', '#ParadiseFound', '#TravelGram', '#InstaTravel', '#YoungAndFree', '#EscapeToBali'],
-        #     'imageUrl': None,
-        #     'is_done': True,
-        #     'message': "Here is the combined content for your social media post focused on a Bali retreat theme. Let me know if you need any changes!",
-        #     'videoUrl': None
-
-        # }
-        # return self.mediator.emit_message('message', content)
-
-#         plans = [{'arguments': [{'name': 'prompt',
-#                  'value': 'Generate a humorous, short Instagram caption about '
-#                           'a Bali retreat that includes storytelling elements '
-#                           'and emojis.'}],
-#   'dependencies': [],
-#   'description': 'Create a humorous, short Instagram caption about a Bali '
-#                  'retreat that includes storytelling elements and emojis.',
-#   'id': '00000001',
-#   'tool': 'create_caption_tool'},
-#  {'arguments': [],
-#   'dependencies': ['00000001'],
-#   'description': 'Join the result of the create_caption_tool task to finalize '
-#                  'the caption.',
-#   'id': '00000002',
-#   'tool': 'join'},
-#  {'arguments': [{'name': 'prompt',
-#                  'value': 'Generate a creative and engaging caption for an '
-#                           'Instagram post about a Bali retreat'}],
-#   'dependencies': ['00000002'],
-#   'description': 'Call the create_caption_agent to generate a caption for an '
-#                  'Instagram post about a Bali retreat.',
-#   'id': '32412460',
-#   'tool': 'create_caption_agent'},
-#  {'arguments': [{'name': 'prompt',
-#                  'value': 'Refine or leverage the generated caption for a Bali '
-#                           'retreat post.'}],
-#   'dependencies': ['32412460'],
-#   'description': 'Passing the results of caption creation for Bali retreat to '
-#                  'join for final check or enhancement.',
-#   'id': '32412461',
-#   'tool': 'join'}]
-
-#         plans = [{'arguments': [{'name': 'prompt',
-#                  'value': 'Generate a formal caption for a Bali retreat post'}],
-#   'dependencies': [],
-#   'description': 'Generate a formal caption for the Bali retreat post with no '
-#                  'dependencies.',
-#   'id': '78845012',
-#   'tool': 'create_caption_agent'},
-#  {'arguments': [{'name': 'prompt',
-#                  'value': 'Summarize the generated caption for the Bali '
-#                           'retreat post.'}],
-#   'dependencies': ['78845012'],
-#   'description': 'Use the generated caption for a Bali retreat post to provide '
-#                  'a summary.',
-#   'id': '78845013',
-#   'tool': 'join'}]
+        # plan = [{'arguments': [{'name': 'prompt',
+        #          'value': 'Generate a creative and engaging caption related to '
+        #                   "'Bali retreat'"}],
+        # 'dependencies': [],
+        # 'description': "Generate a caption related to 'Bali retreat'",
+        # 'id': '87654321',
+        # 'tool': 'create_caption_agent'},
+        # {'arguments': [{'name': 'prompt',
+        #                 'value': "Generate relevant hashtags for a post about a 'Bali "
+        #                         "retreat' using the caption generated as context."}],
+        # 'dependencies': ['87654321'],
+        # 'description': "Generate hashtags using the generated caption about 'Bali "
+        #                 "retreat'",
+        # 'id': '87654322',
+        # 'tool': 'create_hashtags_agent'},
+        # {'arguments': [{'name': 'prompt',
+        #                 'value': 'Combine the generated caption and hashtags for the '
+        #                         'final post.'}],
+        # 'dependencies': ['87654321', '87654322'],
+        # 'description': 'Combine the caption and hashtags to create the final post.',
+        # 'id': '87654323',
+        # 'tool': 'join'}]
         # await self.mediator.emit_plan(
-        #     plan=copy.deepcopy(plans),
-        #     summary='some summary',
-        #     agent_name=self.name
+        #     plan=copy.deepcopy(plan),
+        #     summary="I will start by creating visual content that captures the essence of a Bali retreat. Simultaneously, I will work on generating a captivating caption and relevant hashtags for the Instagram post. Once the visual content, caption, and hashtags are ready, I'll combine them to create a complete post. Let me know if this plan works for you or if there's anything you'd like to adjust.",
+        #     agent_name="init_agent"
         # )
+        # existing_tasks_ids = await self.state_model.get_all_tasks_ids()
+        # print('existing_tasks_ids', existing_tasks_ids)
         # return
-#         plans2 = [
-#     {
-#         "id": "10000001",
-#         "tool": "create_caption_tool",
-#         "arguments": [
-#             {
-#                 "name": "prompt",
-#                 "value": "Create a short, humorous Instagram caption with emojis for a Bali retreat post. The caption should be engaging and does not require specific keywords."
-#             }
-#         ],
-#         "dependencies": [],
-#         "description": "Call the create_caption_tool to generate a humorous caption with emojis for a Bali retreat Instagram post with no dependencies."
-#     },
-#     {
-#         "id": "10000002",
-#         "tool": "join",
-#         "arguments": [],
-#         "dependencies": [
-#             "10000001"
-#         ],
-#         "description": "Join the results to finalize the caption for the user's Instagram post."
-#             }
-#         ]
-#         await self.mediator.emit_plan(
-#             plan=copy.deepcopy(plans2),
-#             summary='some summary',
-#             agent_name='create_caption_agent'
-#         )
-
-        # await asyncio.sleep(0)
-        # return;
-        
-        # self.tasks = [{
-        #     "id": 12345677,
-        #     "tool": "create_hashtags_tool",
-        #     "dependencies": [],
-        #     "arguments": [{
-        #         "name": "prompt",
-        #         "value": "Generate a hashtags for Bali retreat"
-				# 		}]
-				# }]
-        #todo handle case when bellow
-        # await self.mediator.add_agent_to_call_stack(
-        #         parent_agent=self.name,
-        #         agent_name='create_hashtags_agent',
-        #         task_id="32345672",
-        #         message=message
-        #     )
-        # print('add to call stack')
-        # asyncio.create_task(
-        #     self.mediator.add_agent_to_call_stack(
-        #         parent_agent=self.name,
-        #         agent_name='create_hashtags_agent',
-        #         task_id=1123123,
-        #         message=message
-        #     )
-        # )
-        # await asyncio.sleep(0)
-        # return
-        # if self._is_executing() or True:
-        #     print('is exec')
-        #     return await self._execute_plan_and_finalize(self.tasks)
 
         self._save_initial_message(message)
         if self._is_executing():
             print(f"Agent {self.name} is executing")
-            return await self._execute_plan_and_finalize(tasks=self.tasks, resume_execution=True)
+            return await self._execute_plan_and_finalize(tasks=self.tasks)
         start_time = time.time()
-        assistant_response = await self.run_questionnaire(message)
+        assistant_response = await self._run_questionnaire(message)
         end_time = time.time()
         print(f"\033[34mTime taken to run questionnaire:\033[0m {end_time - start_time} seconds")
 
-        if self.if_result_accepted(assistant_response):
+        if self._if_result_accepted(assistant_response):
             if assistant_response.message:
                 self._emit_assistant_message(assistant_response.message)
             return
         
-        need_replan, replan_after_execution, previous_user_requirements = self._parse_assistant_response(assistant_response)
+        need_replan, replan_after_execution, user_requirements = self._parse_assistant_response(assistant_response)
         
         #In case if no user requirements provided or no need to replan. In case of replan we will send message to user as plan overview  
-        plan_is_required = need_replan or (not self._is_plan_exists() and assistant_response.user_requirements)
+        plan_is_required = need_replan or (not self._is_plan_exists() and user_requirements)
         
         print('plan_is_required', plan_is_required)
         
         print('tasks in handle message agent', self.tasks)
         plan_overview_sent = False
-        if assistant_response.user_requirements:
-            self._save_user_requirements(assistant_response)
+        if user_requirements:
+            # self._save_user_requirements(assistant_response)
             # plan_approved = getattr(assistant_response, 'plan_approved', False)
-            plan_response = {};
             if plan_is_required:
                 # Create a plan or replan based on the user requirements
                 plan_response = await self._create_and_save_plan(
                     need_replan=need_replan,
                     replan_after_execution=replan_after_execution,
-                    tasks_with_results=self.executor.get_tasks_with_results(),
-                    executed_user_requirements=previous_user_requirements
+                    user_requirements=user_requirements
                 )
                 print("\033[31mThis overview response\033[0m", plan_response['overview'])
                 self._add_message_to_conversation_history(plan_response['overview'])
@@ -191,7 +93,7 @@ class BaseAgentWithPlanApprove(BaseAgent):
         if assistant_response.message and not plan_overview_sent:
             self._emit_assistant_message(assistant_response.message)
     
-    def get_response_model(self):
+    def get_questionnaire_response_model(self):
         # is_waiting_for_approval = self._get_agent_status() == 'waiting_for_approval'
         # print("\033[34mIs waiting for approval:\033[0m", is_waiting_for_approval)
         

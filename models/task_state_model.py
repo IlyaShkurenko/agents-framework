@@ -1,5 +1,6 @@
 import copy
-from typing import Optional, List, Dict
+from pprint import pprint
+from typing import Optional, List, Dict, Union
 from services.mongo_service import MongoService
 
 class TasksStateModel:
@@ -20,10 +21,12 @@ class TasksStateModel:
             await self._update_state()
         else:
             self.state = state
+        return copy.deepcopy(self.state)
 
-    async def save_task_result(self, task_id: int, result: dict):
-        state = await self.get_or_load_state()
-        print('state', state['tasks'])
+    async def save_task_result(self, task_id: int, result: Union[dict, str, list[dict]]):
+        state = await self.load_state()
+        print('state results save')
+        pprint(state['tasks'])
         for task in state["tasks"]:
             if task["id"] == task_id:
                 task["result"] = result
@@ -34,7 +37,7 @@ class TasksStateModel:
         await self._update_state()
 
     async def get_task_result(self, task_id: int) -> Optional[dict]:
-        state = await self.get_or_load_state()
+        state = await self.load_state()
 
         for task in state["tasks"]:
             if task["id"] == task_id:

@@ -1,9 +1,11 @@
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Optional, Union
 import asyncio
 import json
 from pprint import pprint
+
+from models.task_state_model import TasksStateModel
 class Executor:
     def __init__(self, agent, tools, last_tool_name: str = 'join'):
         """
@@ -15,20 +17,37 @@ class Executor:
             tasks_state_model: Model to interact with task states in the database.
         """
         self.agent = agent
-        self.tasks_state_model = None
+        self.tasks_state_model: TasksStateModel
         self.tools = {tool.name: tool for tool in tools}
         self.last_tool_name = last_tool_name
         self.called_agents = set()
         self.tasks = []  # Store tasks for potential re-entry
         self.observations = {}  # Store results of completed tasks
         self.retry_after = 0.2  # Time to wait before retrying dependent tasks
-        self.agents_tasks_dependencies = []
+        # self.agents_tasks_dependencies = []
 
-    def set_tasks_state_model(self, tasks_state_model):
-        self.tasks_state_model = tasks_state_model
-
-    def set_tasks(self, tasks: List[Dict[str, Any]]):
+    async def initialize(self, client_id: str, chat_id: str, called_agents: List[str], tasks: List[Dict[str, Any]]):
+        self.tasks_state_model = TasksStateModel(client_id, chat_id)
         self.tasks = tasks
+
+        if self.tasks:
+            already_called_agents = {task['tool'] for task in self.tasks if task['tool'] in called_agents}
+            self.called_agents.update(already_called_agents)
+        else:
+            self.called_agents = set()
+
+        # self.called_agents.add('create_visual_effects_agent')
+        print('called agents', self.called_agents)
+        
+        state = await self.tasks_state_model.load_state()
+        tasks_results = state.get('tasks', [])
+        # print('tasks results', tasks_results)
+        self.observations = {}
+        task_ids = {task['id'] for task in self.tasks}
+        self.observations.update({task['id']: task['result'] for task in tasks_results if task['id'] in task_ids})
+
+        print('observations in initialize', self.agent.name)
+        pprint(self.observations)
 
     async def execute_plan(self, tasks: List[Dict[str, Any]]):
         """
@@ -46,7 +65,8 @@ class Executor:
         # Launch tool tasks in parallel
         tool_tasks = [
             task for task in tasks 
-            if "tool" in task["tool"].lower() or task["tool"].lower() == self.last_tool_name.lower()
+            if ("tool" in task["tool"] or task["tool"] == self.last_tool_name)
+            and task.get("description") != "FROM_OTHER_AGENT"
         ]
         print("\033[31mTool tasks:\033[0m", tool_tasks)
         if len(tool_tasks) > 0:
@@ -58,15 +78,19 @@ class Executor:
             print('tools results', tools_results)
 
             filtered_tools_results = [result for result in tools_results if result is not None]
-            all_tools_done = any(tool_result['tool'] == self.last_tool_name for tool_result in filtered_tools_results)
+            last_tool_done = next((tool for tool in filtered_tools_results if tool['tool'] == self.last_tool_name), None)
 
-            if all_tools_done:
-                # self.agent.on_agent_execute('join')
-                return self.get_execution_result(tools_results) #needs to check here if that's a last agent or tool
+            print('last tool done', last_tool_done)
+
+            if last_tool_done:
+                return {
+                    "result": self.get_execution_result(tools_results),
+                    "id": last_tool_done["id"]
+                }
 
         # Process agent tasks sequentially
         for task in tasks:
-            if "agent" in task["tool"].lower():
+            if "agent" in task["tool"]:
                 print("\033[32mAgent task:\033[0m")
                 pprint(task)
                 # If dependencies exist, process them
@@ -80,7 +104,7 @@ class Executor:
                     if task["tool"] in self.called_agents and not self.observations.get(task["id"]):
                         try:
                             print("\033[32mAgent was called before:\033[0m", task["tool"], task["id"])
-                            # Agent already called, collect results
+                            # Agent already called, collect results. It should be only tools since agents was passed as arguments
                             dependencies_results = [
                                 self.observations[dep] for dep in task["dependencies"]
                                 if self._is_tool_dependency(dep)
@@ -90,34 +114,48 @@ class Executor:
                             #Result of agent task is a list of tools on which it depends. If it depends on agent then it's used as an argument for it
                             result = None
                             if len(dependencies_results) == 1:
-                                result = self.observations[task["dependencies"][0]]
+                                result = dependencies_results[0]
                             else:
                                 result = dependencies_results
+                                
                             self.observations[task["id"]] = result
+                            print('observations after agent task', self.observations)
+
                             # self.agent.on_agent_execute(task["tool"])
                             await self.tasks_state_model.save_task_result(task["id"], result)
                             print('before tool which depends on agent')
-                            tool_which_depends_on_agent = next((t for t in self.tasks if t["dependencies"] == [task["id"]]), None)
+                            tool_which_depends_on_agent = next((t for t in self.tasks if task["id"] in t["dependencies"]), None)
                             print('tool which depends on agent', tool_which_depends_on_agent)
-
-                            if tool_which_depends_on_agent and tool_which_depends_on_agent["tool"] == self.last_tool_name:
-                                tool_result= await self._process_tool_task(tool_which_depends_on_agent)
-                                return tool_result['result']
                             
-                            return result
+                            if tool_which_depends_on_agent:
+                                parent_tool_name = tool_which_depends_on_agent["tool"]
+                                #last tool is join or other tool so needs to go out from execution
+                                if parent_tool_name == self.last_tool_name:
+                                    tool_result = await self._process_tool_task(tool_which_depends_on_agent)
+
+                                    if task['tool'] in self.called_agents:
+                                        print(f"\033[31mRemoved from called agents:\033[0m {task['tool']}") 
+                                        self.called_agents.remove(task['tool'])
+                                    return tool_result
+                                elif "agent" in parent_tool_name:
+                                    print("\033[32mPrevious agent done, go to next iteration\033[0m", task["tool"], parent_tool_name)
+                                    #last tool is another agent so needs to call it instead of go out from execution
+                                    continue
+                            
+                            return { "id": task["id"], "result": result }
                         except KeyError as e:
                             print(f"\033[31mKeyError:\033[0m Dependency '{e}' not found in observations.")
                         except Exception as e:
                             print(f"\033[31mError:\033[0m {e}")
                     else:
                         # Agent not called yet, call with dependencies
-                        dependencies_results = self._collect_dependencies_results(task)
-                        print("\033[33mDependencies results as arguments for first called agent:\033[0m", task["id"])
-                        pprint(dependencies_results)
-                        await self._process_agent_task(task, dependencies_results)
+                        # dependencies_results = self._collect_dependencies_results(task)
+                        # print("\033[33mDependencies results as arguments for first called agent:\033[0m", task["id"])
+                        # pprint(dependencies_results)
+                        await self._process_agent_task(task)
                         return  # Exit after calling the agent
 
-    async def _process_agent_task(self, task: Dict[str, Any], dependencies_results_as_arguments: Dict[str, Any] = None):
+    async def _process_agent_task(self, task: Dict[str, Any]):
         """
         Process an agent task and store its result in the state.
 
@@ -129,25 +167,87 @@ class Executor:
         print("\033[34mInvoking agent:\033[0m", task["tool"], task["id"])
         self.called_agents.add(task["tool"])
 
-        tool_context = ""
+        message = self._create_task_message(task)
 
-        if dependencies_results_as_arguments:
-            formatted_results = "\n".join(
-                f"{description}: {result}" 
-                for description, result in dependencies_results_as_arguments.items()
+        await self.agent.process_agent_task(task["id"], task["tool"], message)
+
+    async def _process_tool_task(self, task: Dict[str, Any]):
+        """
+        Process a tool task and store the result.
+
+        Args:
+            task (Dict[str, Any]): The tool task to process.
+        """
+        print("\033[34mProcessing tool task:\033[0m", task)
+        task_id = task["id"]
+        tool_dependencies = self._get_tool_dependencies(task["dependencies"])
+
+        # Check if tool dependencies are resolved
+        if not self._check_dependencies(tool_dependencies):
+            print(f"Tool dependencies for task {task_id} not satisfied.")
+            return await self._schedule_pending_task(task, tool_dependencies)
+
+        # Check agent dependencies separately
+        agent_dependencies = self._get_agent_dependencies(task["dependencies"])
+        if not self._check_dependencies(agent_dependencies):
+            print(f"Agent dependencies for tool task {task_id} not satisfied.")
+            return
+
+        # Execute the tool and store the result
+        try:
+            tool_name = task["tool"]
+            tool = self.tools[tool_name]
+            
+            message = self._create_task_message(task)
+            print("\033[34mExecuting tool:\033[0m", tool_name, task_id)
+
+            result = None
+
+            if tool_name != 'join':
+                previous_tool_conversation_history = self.agent.get_tool_conversation_history(tool_name)
+                
+                result, conversation_history = await tool.execute(message=message, conversation_history=previous_tool_conversation_history)
+
+                self.agent.on_tool_execute(tool_name, result, conversation_history)
+            else:
+                result = await tool.execute(message=message, plan=self.tasks)
+
+            print("\033[34mExecuted tool with a result:\033[0m", tool_name, result)
+            # Store result in observations and state model
+            self.observations[task_id] = result
+            await self.tasks_state_model.save_task_result(task_id, result)
+            return { "id": task_id, "tool": tool_name, "description": task["description"], "result": result }
+        except Exception as e:
+            print(e)
+            print(f"Error executing tool {tool_name}: {str(e)}")
+
+    def _create_task_message(self, task: dict) -> str:
+        dependencies_results = self._collect_dependencies_results(task)  
+        message = ""
+        if dependencies_results.items():
+            message += (
+                "\nHere are the results of the tasks that you depend on:\n" +
+                "".join(f"Task: {description} Result: {result}\n" for description, result in dependencies_results.items()) +
+                "\nUse them as a context for your task\n"
             )
-            tool_context = (
-                f"{tool_context}\nHere are the results of the tasks that you depend on:\n{formatted_results}"
-            )
-        tool_context += f"\nUse these arguments to process your task: {task['arguments']}"
 
-        print("\033[34mArguments:\033[0m", tool_context)
+        task_args = task.get("arguments", [])
 
-        await self.agent.process_agent_task(
-            task["id"], task["tool"], tool_context
-        )
+        print('task args', task_args)
 
-    def add_agent_task_to_dependencies(self, agent_name: str, task_id: int, task_name: str):
+        prompt_arg = next((arg for arg in task_args if arg['name'] == 'prompt'), None)
+
+        arguments = prompt_arg['value'] if prompt_arg else (f"\nUse these arguments to process your task: {task_args}" if task_args else "")
+
+        message += arguments
+        print("\033[33mArguments:\033[0m", message)
+        
+        return message
+    
+    async def get_task_result(self, task_id: int) -> Optional[dict]:
+        return await self.tasks_state_model.get_task_result(task_id)
+
+    def link_final_task_to_dependencies(self, agent_name: str, task_id: int, task_name: str):
         """
         Add a new task ID to the dependencies of the given agent.
         """
@@ -158,28 +258,46 @@ class Executor:
         )
         print('agent name', agent_name)
         if agent_task:
-            agent_task["dependencies"].append(task_id)
-            self.agents_tasks_dependencies.append({
-                "id": task_id,
-                "tool": task_name,
-                "dependencies": []
-            })
+            if task_id not in agent_task["dependencies"]:
+                agent_task["dependencies"].append(task_id)
+                for dep_id in agent_task["dependencies"]:
+                    dep_task = next((task for task in self.tasks if task["id"] == dep_id), None)
+                    if dep_task and dep_task["description"] == "FROM_OTHER_AGENT":
+                        agent_task["dependencies"].remove(dep_id)
+                        self.tasks.remove(dep_task)
+
+                agent_index = self.tasks.index(agent_task)
+                self.tasks.insert(agent_index, {
+                    "id": task_id,
+                    "tool": task_name,
+                    "description": "FROM_OTHER_AGENT",
+                    "dependencies": []
+                })
+            # self.agents_tasks_dependencies.append({
+            #     "id": task_id,
+            #     "tool": task_name,
+            #     "dependencies": []
+            # })
             print("\033[1;33mAdded agent task to dependencies:\033[0m", task_id)
             print('After adding')
             pprint(self.tasks)
         return self.tasks
 
-    def set_previous_agent_result(self, previous_agent_result):
-        print("\033[1;33mSet previous agent result:\033[0m", previous_agent_result)
+    def set_child_agent_result(self, previous_agent_result):
+        print("\033[1;33mSet child agent result:\033[0m", previous_agent_result)
         pprint(self.tasks)
         agent_task = next(
-            (task for task in self.tasks if task["tool"] == previous_agent_result["agent"]), None
+            (task for task in self.tasks if task["id"] == previous_agent_result["id"]), None
         )
         print('agent task', agent_task)
         if agent_task:
             self.observations[agent_task["id"]] = previous_agent_result["result"]
-            asyncio.create_task(self.tasks_state_model.save_task_result(agent_task["id"], previous_agent_result["result"]))
-            
+            # asyncio.create_task(self.tasks_state_model.save_task_result(agent_task["id"], previous_agent_result["result"]))
+
+    # def agent_executed(self, agent_name: str):
+    #     print('agent executed', agent_name)
+    #     print('called agents', self.called_agents)
+    #     self.called_agents.remove(agent_name)
 
     def get_tasks_with_results(self) -> List[Dict[str, Any]]:
         """
@@ -202,68 +320,6 @@ class Executor:
             tasks_with_results.append(task_with_result)
 
         return tasks_with_results
-    
-    async def _process_tool_task(self, task: Dict[str, Any]):
-        """
-        Process a tool task and store the result.
-
-        Args:
-            task (Dict[str, Any]): The tool task to process.
-        """
-        print("\033[34mProcessing tool task:\033[0m", task)
-        task_id = task["id"]
-        tool_dependencies = self._get_tool_dependencies(task["dependencies"])
-
-        # Check if tool dependencies are resolved
-        if not self._check_dependencies(tool_dependencies):
-            print(f"Tool dependencies for task {task_id} not satisfied.")
-            return await self._schedule_pending_task(task)
-
-        # Check agent dependencies separately
-        agent_dependencies = self._get_agent_dependencies(task["dependencies"])
-        if not self._check_dependencies(agent_dependencies):
-            print(f"Agent dependencies for tool task {task_id} not satisfied.")
-            return
-
-        # Execute the tool and store the result
-        try:
-            tool_name = task["tool"]
-            tool = self.tools[tool_name]
-            args = task.get("arguments", [])
-
-            dependencies_results = self._collect_dependencies_results(task)
-            formatted_dependencies = "\n".join(
-                f"{description}: {result}"
-                for description, result in dependencies_results.items()
-            )
-
-            # Construct the arguments string with dependencies
-
-            tool_context = ""
-            if len(args) > 0:
-                tool_context += f"Use these arguments as context: {json.dumps(args)}"
-            if formatted_dependencies:
-                tool_context += f"\nHere are the results of the tasks that you depend on:\n{formatted_dependencies}"
-
-            print("\033[34mExecuting tool:\033[0m", tool_name, task_id)
-            print("\033[33mArguments:\033[0m", tool_context)
-
-            result = None
-
-            if tool_name != 'join':
-                result = await tool.execute(tool_context)
-            else:
-                result = await tool.execute(message=tool_context, plan=self.tasks)
-
-            print(f"Executed tool {tool_name} with result: {result}")
-
-            # Store result in observations and state model
-            self.observations[task_id] = result
-            await self.tasks_state_model.save_task_result(task_id, result)
-            return { "id": task_id, "tool": tool_name, "description": task["description"], "result": result }
-        except Exception as e:
-            print(e)
-            print(f"Error executing tool {tool_name}: {str(e)}")
 
     def _collect_dependencies_results(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -282,17 +338,17 @@ class Executor:
         return dependencies_results
 
 
-    async def _schedule_pending_task(self, task: Dict[str, Any]):
+    async def _schedule_pending_task(self, task: Dict[str, Any], tool_dependencies: List[int]):
         """
         Schedule a pending task by checking tool dependencies with a delay.
 
         Args:
             task (Dict[str, Any]): The task to process.
         """
+        print(f"Schedule pending task: {tool_dependencies}")
         while True:
-            tool_dependencies = self._get_tool_dependencies(task["dependencies"])
             if all(dep in self.observations for dep in tool_dependencies):
-                return await self._process_tool_task(task)  # Use await here
+                return await self._process_tool_task(task)
             await asyncio.sleep(self.retry_after)
 
     def _get_tool_dependencies(self, dependencies: List[int]) -> List[int]:
@@ -329,9 +385,10 @@ class Executor:
         Returns:
             bool: True if the dependency is a tool, otherwise False.
         """
-        all_dependencies = self.tasks + self.agents_tasks_dependencies
+        # all_dependencies = self.tasks + self.agents_tasks_dependencies
+        all_dependencies = self.tasks
         task = next((task for task in all_dependencies if task["id"] == dep), None)
-        return task and ("tool" in task["tool"].lower() or task["tool"].lower() == 'join')
+        return bool(task and ("tool" in task["tool"] or task["tool"] == self.last_tool_name))
 
     def _check_dependencies(self, dependencies: List[int]) -> bool:
         """
@@ -345,29 +402,29 @@ class Executor:
         """
         return all(dep in self.observations for dep in dependencies)
 
-    async def resume_execution(self, tasks: List[Dict[str, Any]] = None):
-        """
-        Resume the execution of tasks. If no tasks are currently loaded, 
-        restore tasks and observations from the database.
-        """
-        print("Resuming task execution...")
-        print('tasks', tasks)
-        if not tasks:
-            print("No tasks found to resume.")
-            return
-        self.tasks = tasks
+    # async def resume_execution(self, tasks: List[Dict[str, Any]] = None):
+    #     """
+    #     Resume the execution of tasks. If no tasks are currently loaded, 
+    #     restore tasks and observations from the database.
+    #     """
+    #     print("Resuming task execution...")
+    #     print('tasks', tasks)
+    #     if not tasks:
+    #         print("No tasks found to resume.")
+    #         return
+    #     self.tasks = tasks
 
-        state = await self.tasks_state_model.get_or_load_state()
-        # print('state', state)
-        tasks_results = state.get('tasks', [])
-        print('tasks results', tasks_results)
-        self.observations.update({task['id']: task['result'] for task in tasks_results})
+    #     state = await self.tasks_state_model.load_state()
+    #     # print('state', state)
+    #     tasks_results = state.get('tasks', [])
+    #     print('tasks results', tasks_results)
+    #     self.observations.update({task['id']: task['result'] for task in tasks_results})
 
-        print('observations', self.observations)
+    #     print('observations', self.observations)
 
-        return await self.execute_plan(self.tasks)
+    #     return await self.execute_plan(self.tasks)
 
-    def get_execution_result(self, tools_results: List[Dict[str, Any]]) -> str:
+    def get_execution_result(self, tools_results: Optional[List[dict[str, Any]]] = None) -> str:
         """
         Processes the results from tools and returns a response.
 
@@ -379,16 +436,19 @@ class Executor:
             str: The final result, based on the logic described.
         """
 
+        if tools_results is None:
+            return "No results available."
+
         for tool_result in tools_results:
             if self.last_tool_name == tool_result['tool']:
-                print(f"Last tool '{self.last_tool_name}' found, returning its result:", tool_result['result'])
+                # print(f"Last tool '{self.last_tool_name}' found, returning its result:", tool_result['result'])
                 return tool_result['result']
 
         # If neither 'joiner' nor the last tool is found, aggregate all results
         aggregated_results = "\n".join(
             f"{res['description']}: {self._format_result(res['result'])}" for res in tools_results
         )
-        final_result = f"Here are results of tools:\n{aggregated_results}"
+        final_result = f"Here are tools logs and results:\n{aggregated_results}"
         
         print('Aggregated results:', final_result)
         return final_result

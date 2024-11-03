@@ -1,5 +1,6 @@
 # state_model.py
 
+import copy
 from datetime import datetime
 from services.mongo_service import MongoService
 
@@ -25,6 +26,7 @@ class AgentStateModel:
             await self.save_state()
         else:
             self.state = state
+        return copy.deepcopy(self.state)
 
     async def save_state(self):
         # print('save state', self.state)
@@ -43,17 +45,20 @@ class AgentStateModel:
     def save_agent_planner_history(self, history: list):
         self.state['planner_conversation_history'] = history
 
+    def save_tool_conversation_history(self, tool_name: str, history: list):
+        self.state[f"{tool_name}_conversation_history"] = history
+
     def save_agent_status(self, status: str):
         self.state['status'] = status  
-        
-    def get_agent_status(self):
-        return self.state.get('status')
         
     def save_agent_plan(self, plan: dict):
         if 'plan' not in self.state:
             self.state['plan'] = [plan]
         else:
             self.state['plan'].append(plan)
+
+    def get_agent_status(self):
+        return self.state.get('status')
 
     def get_tasks(self) -> list:
         if self.is_plan_exists():
@@ -62,21 +67,14 @@ class AgentStateModel:
         return []
     
     async def get_all_tasks_ids(self) -> list:
-        return await self.mongo_service.get_all_tasks_ids(self.client_id, self.chat_id)
-    
-    async def update_agent_plan(self, tasks: list):
-        if self.is_plan_exists() and 'plan' in self.state:
-            last_plan = self.state['plan'][-1]
-            
-            last_plan['tasks'] = tasks
-            
-            print("\033[32mPlan updated:\033[0m", last_plan)
-            await self.save_state()
-        else:
-            print("\033[31mNo plan exists to update\033[0m")
+        return await self.mongo_service.get_all_tasks_ids()
 
     def get_user_requirements(self):
-        return self.state.get('user_requirements')
+        if self.is_plan_exists():
+            last_plan = self.state['plan'][-1]
+            return last_plan['user_requirements']
+        else:
+            print("\033[31mNo plan exists to retrieve user requirements\033[0m")
 
     def get_conversation_history(self):
         return self.state.get('conversation_history', [])
@@ -84,11 +82,11 @@ class AgentStateModel:
     def get_agent_planner_conversation_history(self):
         return self.state.get('planner_conversation_history', [])
     
+    def get_tool_conversation_history(self, tool_name):
+        return self.state.get(f"{tool_name}_conversation_history", [])
+    
     def is_plan_exists(self):
         return 'plan' in self.state and len(self.state['plan']) > 0
-
-    def add_to_conversation_history(self, messages: list[dict]):
-        self.state['conversation_history'].extend(messages)
         
     def is_requirements_changed(self, new_requirements: dict) -> bool:
         
@@ -103,3 +101,14 @@ class AgentStateModel:
                 return True
 
         return False 
+    
+    async def update_agent_plan(self, tasks: list):
+        if self.is_plan_exists():
+            last_plan = self.state['plan'][-1]
+            
+            last_plan['tasks'] = tasks
+            
+            print("\033[32mPlan updated:\033[0m", last_plan)
+            await self.save_state()
+        else:
+            print("\033[31mNo plan exists to update\033[0m")

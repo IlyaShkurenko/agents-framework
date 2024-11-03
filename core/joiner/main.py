@@ -67,6 +67,6 @@ class Joiner(BaseComponent):
             system_prompt=prompt,
             message=message
         )
-        print("\033[33mJoiner Response:\033[0m", response)
+        # print("\033[33mJoiner Response:\033[0m", response)
         return response
 

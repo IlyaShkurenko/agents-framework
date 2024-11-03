@@ -1,4 +1,5 @@
 from datetime import datetime
+from pprint import pprint
 from typing import Optional, Union
 import openai
 
@@ -13,13 +14,26 @@ async def openai_structured_outputs_stream(**kwargs):
         **kwargs, stream_options={"include_usage": True}
     ) as stream:
         async for chunk in stream:
-            if chunk.type == 'chunk':
-                latest_snapshot = chunk.to_dict()['snapshot']
-                latest_parsed = latest_snapshot['choices'][0]['message'].get('parsed', {})
-                # latest_usage = latest_snapshot.get('usage', {})
-                # latest_json = latest_snapshot['choices'][0]['message']['content']
+            try:
+                if chunk.type == 'chunk':
+                    latest_snapshot = chunk.to_dict().get('snapshot')
+                    if not latest_snapshot:
+                        # print("Snapshot is missing in chunk, skipping.")
+                        continue
 
-                yield latest_parsed
+                    choices = latest_snapshot.get('choices', [])
+                    if not choices or 'message' not in choices[0]:
+                        # print("No valid choices or message in snapshot, skipping.")
+                        continue
+
+                    latest_parsed = choices[0]['message'].get('parsed')
+                    if latest_parsed:
+                        yield latest_parsed
+                    # else:
+                        # print("Parsed data is empty or not found in chunk")
+            except Exception as e:
+                print(f"Error processing chunk: {e}")
+                continue
 
 class OpenAIService:
     """
@@ -73,7 +87,7 @@ class OpenAIService:
             #     messages=openai_messages,
             #     response_format=response_schema
             # )
-
+            print('before openai response')
             # result = completion.choices[0].message.parsed
             async for parsed_completion in openai_structured_outputs_stream(
                 model="gpt-4o-2024-08-06",
@@ -99,5 +113,8 @@ class OpenAIService:
 
         if content:
             conversation_history.append({"role": "assistant", "content": content, "agent": self.agent_name, "datetime": datetime.now()})
-
+        print('after openai response')
         return result
+    
+    def add_assistant_message_to_conversation_history(self, conversation_history: list, content: str):
+        conversation_history.append({"role": "assistant", "content": content, "agent": self.agent_name, "datetime": datetime.now()})

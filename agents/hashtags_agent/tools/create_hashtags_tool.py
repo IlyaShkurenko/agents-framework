@@ -25,16 +25,16 @@ class CreateHashtagsTool(BaseComponent):
     def __init__(self):
         self.openai_service = OpenAIService(agent_name=self.name)
 
-    async def execute(self, message: str):
+    async def execute(self, message: str, conversation_history: list):
         """
         Generates hashtags based on the state provided.
         """
-        prompt = f"Generate hashtags for with the following details: {message}."
+        # prompt = f"Generate hashtags for with the following details: {message}."
 
         response = await self.openai_service.get_response(
-            conversation_history=[],
+            conversation_history=conversation_history,
             system_prompt="You are an AI assistant that specializes in generating hashtags for social media posts. Provide a list of hashtags without any explanations or comments.",
-            message=prompt,
+            message=message,
             response_schema=AssistantResponse
         )
-        return response.hashtags
+        return response.hashtags, conversation_history

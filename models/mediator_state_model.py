@@ -8,23 +8,34 @@ class MediatorStateModel:
         self.default_agent = default_agent
         self.mongo_service = MongoService()
 
-    async def get_call_stack(self):
-        self.state = await self.mongo_service.get_mediator_state(self.client_id, self.chat_id)
-        if not self.state or not self.state.get('call_stack'):
+    async def load_state(self):
+        state = await self.mongo_service.get_mediator_state(self.client_id, self.chat_id)
+        if not state:
             self.state = {
                 "client_id": self.client_id,
                 "chat_id": self.chat_id,
-                "call_stack": [self.default_agent]
+                "call_stack": [self.default_agent],
+                "tasks": []
             }
-            await self.mongo_service.update_mediator_state(self.client_id, self.chat_id, self.state)
+            await self.save_state()
+        else:
+            self.state = state
+        if not self.state.get('call_stack'):
+            self.state['call_stack'] = [self.default_agent]
+            await self.save_state()
+        return copy.deepcopy(self.state)
+    
+    async def save_state(self):
+        print('mediator state', self.state)
+        await self.mongo_service.update_mediator_state(self.client_id, self.chat_id, self.state)
 
-        return copy.deepcopy(self.state.get('call_stack', []))
+    async def get_call_stack(self):
+        return copy.deepcopy(self.state.get('call_stack'))
+    
+    def set_tasks(self, tasks: list):
+        self.state['tasks'] = tasks
 
     async def add_agent_to_call_stack(self, agent_name: str):
-        if not hasattr(self, 'state') or self.state is None:
-            print("\033[31mState not found, loading...\033[0m")
-            await self.get_call_stack()
-
         last_agent = self.state['call_stack'][-1]
         print("\033[33mLast agent\033[0m", last_agent)
         print("\033[33mStack\033[0m", self.state['call_stack'])
@@ -32,17 +43,14 @@ class MediatorStateModel:
             self.state['call_stack'].append(agent_name)
             print("\033[33mStack updated\033[0m")
             print(self.state)
-            await self.mongo_service.update_mediator_state(self.client_id, self.chat_id, self.state)
+            await self.save_state()
 
     async def remove_agent_from_call_stack(self, agent_name: str):
         try:
-            if not hasattr(self, 'state') or self.state is None:
-                print("\033[31mState not found, loading...\033[0m")
-                await self.get_call_stack()
             if agent_name in self.state['call_stack']:
                 self.state['call_stack'].remove(agent_name)
                 print(f"\033[33mAgent '{agent_name}' removed from call stack\033[0m")
-                await self.mongo_service.update_mediator_state(self.client_id, self.chat_id, self.state)
+                await self.save_state()
             else:
                 print(f"\033[31mAgent '{agent_name}' not found in call stack\033[0m")
         except Exception as e:

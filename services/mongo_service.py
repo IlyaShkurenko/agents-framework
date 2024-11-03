@@ -1,7 +1,6 @@
 # services/mongo_service.py
 
 from datetime import datetime
-import os
 from motor.motor_asyncio import AsyncIOMotorClient
 
 class MongoService:
@@ -11,7 +10,8 @@ class MongoService:
 
     def __init__(self):
         # Replace with your MongoDB connection string
-        self.client = AsyncIOMotorClient(os.environ['MONGODB_CONNECTION_STRING'])
+        self.client = AsyncIOMotorClient('mongodb+srv://illiashkurenko98:3JYbiCLJXhLhJK5u@cluster0.66i1z.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0')
+        # self.client = AsyncIOMotorClient(os.environ['MONGODB_CONNECTION_STRING'])
         self.db = self.client['chatbot_db']
         self.agent_collection = self.db['agent_states']
         self.mediator_collection = self.db['mediator_states']
@@ -169,8 +169,8 @@ class MongoService:
         """
         await self._update_state({'client_id': client_id, 'chat_id': chat_id}, state, 'mediator_states')     
 
-    async def get_all_tasks_ids(self, client_id: str, chat_id: str):
-        agents_results = await self.agent_collection.find({'client_id': client_id, 'chat_id': chat_id}).to_list(None)
+    async def get_all_tasks_ids(self):
+        agents_results = await self.agent_collection.find({}, {'plan': True}).to_list(None)
         all_task_ids = []
 
         for agent in agents_results:
