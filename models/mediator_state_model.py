@@ -26,7 +26,7 @@ class MediatorStateModel:
         return copy.deepcopy(self.state)
     
     async def save_state(self):
-        print('mediator state', self.state)
+        # print('mediator state', self.state)
         await self.mongo_service.update_mediator_state(self.client_id, self.chat_id, self.state)
 
     async def get_call_stack(self):

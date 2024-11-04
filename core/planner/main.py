@@ -25,7 +25,7 @@ class Argument(BaseModel):
 #     tasks: List[Task]
 
 def create_argument_model(plan_was_executed: bool = False):
-    arguments_value_description = "The value of the argument."
+    arguments_value_description = "The value of the argument. Detailed as possible. If other tasks results exists, use them as context here"
     
     if plan_was_executed:
         # arguments_value_description += " If result_action_feedback is 'adjust', start the 'value' with 'Adjust previous result with...' followed by the user's exact change request."
@@ -117,6 +117,7 @@ class Planner:
                           replan_after_execution: bool = False,
                           existing_tasks_ids: List[str] = [],
                           tasks_with_results: List[dict] = [],
+                          dependencies_message: str = "",
                           previous_user_requirements: Union[dict, None] = None) -> tuple[List[dict], dict]:
         """
         Creates a plan by prompting the LLM and parsing the output.
@@ -169,7 +170,12 @@ class Planner:
         print("\033[33mPlanner Prompt:\033[0m", prompt)
 
         response_schema = create_dynamic_response_model(include_overview, replan_after_execution)
-        message = "Re-plan based on new requirements:" if replan else "Generate a plan based on user requirements:"
+        message = ""
+
+        if dependencies_message:
+            message += f"\n{dependencies_message}\nIt is mandatory to provide this as a context to corresponding tool arguments\n"
+
+        message += "Re-plan based on new requirements:" if replan else "Generate a plan based on user requirements:"
         message += f"\n{str(user_requirements)}"
 
         # if replan_after_execution:

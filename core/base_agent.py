@@ -52,6 +52,7 @@ class BaseAgent(BaseComponent, ABC):
         self.planner: Planner
         self.openai_service = OpenAIService(agent_name=self.name)
         self.emit_message_on_agent_done = True
+        self.dependencies_message = ""
 
     async def initialize_agent(self, client_id: str, chat_id: str, called_agents: List[str] = []):
         """
@@ -86,8 +87,12 @@ class BaseAgent(BaseComponent, ABC):
         """
         message = kwargs.get('message')
         print('message', message)
+        dependencies_message = kwargs.get('dependencies_message')
         if message is None:
             raise ValueError("Missing 'message' in kwargs")
+        if dependencies_message:
+            self.dependencies_message = dependencies_message
+            
         response = await self.handle_message(message)
         await self._save_state()
         return response
@@ -104,7 +109,7 @@ class BaseAgent(BaseComponent, ABC):
         else:
             return await self._execute_plan_and_finalize(tasks=self.tasks)
 
-    async def process_agent_task(self, task_id, agent_name, arguments: str):
+    async def process_agent_task(self, task_id, agent_name, arguments: str, dependencies_message: str):
         """
         Process the task arguments and delegate to the mediator.
 
@@ -122,7 +127,8 @@ class BaseAgent(BaseComponent, ABC):
             parent_agent=self.name,
             agent_name=agent_name,
             task_id=task_id,
-            message=arguments
+            message=arguments,
+            dependencies_message=dependencies_message
         )
         return f"Task for {agent_name} added to call stack with message"
     
@@ -135,10 +141,6 @@ class BaseAgent(BaseComponent, ABC):
     def on_tool_execute(self, tool_name, result, conversation_history):
         # print('on tool execute', tool_name, result, conversation_history)
         self._save_tool_conversation_history(tool_name, conversation_history)
-
-    # def on_child_agent_done(self, agent_name, result):
-    #     print('on child agent done', agent_name, result)
-    #     self.executor.agent_executed(agent_name)
         
     async def link_final_task_to_dependencies(self, agent_name, task_id: int, task_name: str):
         """
@@ -162,10 +164,6 @@ class BaseAgent(BaseComponent, ABC):
     # Helper method to check if replan is needed
     def _need_replan(self, assistant_response):
         return self.state_model.is_requirements_changed(assistant_response.user_requirements.dict())
-
-    # Helper method to save user requirements
-    # def _save_user_requirements(self, assistant_response):
-    #     self.state_model.save_user_requirements(assistant_response.user_requirements.dict())
 
     def _get_user_requirements(self):
         return self.state_model.get_user_requirements()
@@ -220,9 +218,7 @@ class BaseAgent(BaseComponent, ABC):
         self._save_agent_status('waiting_for_approval')
     
     def _on_agent_done(self):
-        print(0)
         self._save_agent_status('completed')
-        print(3)
         if self.result:
             task = asyncio.create_task(self.mediator.on_agent_done(self.name, self.result['result'], self.result['id']))
             task.add_done_callback(
@@ -230,7 +226,6 @@ class BaseAgent(BaseComponent, ABC):
                 if not t.exception() 
                 else print(f"\033[31mMediator agent done failed with error:\033[0m {t.exception()}")
             )
-            print(4)
 
     async def _run_questionnaire(self, message: str):
         """
@@ -330,6 +325,7 @@ class BaseAgent(BaseComponent, ABC):
             tasks_with_results=tasks_with_results,
             previous_user_requirements=executed_user_requirements,
             include_overview=self.include_overview,
+            dependencies_message=self.dependencies_message,
             existing_tasks_ids=existing_tasks_ids
         )
 
@@ -339,7 +335,6 @@ class BaseAgent(BaseComponent, ABC):
         self.tasks = planner_response['tasks']
         planner_response['user_requirements'] = user_requirements
         self._save_plan(planner_response)
-        print(user_requirements['summary'])
         task = asyncio.create_task(self.mediator.emit_plan(
             plan=copy.deepcopy(planner_response['tasks']),
             summary=user_requirements['summary'],
@@ -379,7 +374,6 @@ class BaseAgent(BaseComponent, ABC):
         
     def _create_dynamic_user_requirements_response_model(self, extra_fields = {}, include_adjustments: bool = False):
         dynamic_fields = extra_fields or {}
-        # dynamic_fields['summary'] = (str, Field(..., description="Brief Summary of the user's requirements. This info will be used by next agent to create a plan. If user mentioned sequence of actions then include it in summary so plan can be correct. Be aware to include all requirements and not only specific changes. Start with 'User decided to'. "))
 
         dynamic_fields['summary'] = (str, Field(..., description="Concise summary of the user's requirements. This summary will guide the next agent in creating a plan. Analyze all relevant parts of the conversation to capture the primary task and include all requirements the user has provided, not just the latest changes. Start the summary with 'User decided to'."))
 
@@ -395,7 +389,7 @@ class BaseAgent(BaseComponent, ABC):
             print(f"Field: {field_name}, Description: {field_info.description}")
         return response_model
     
-    def _create_dynamic_response_model(self, extra_fields: dict[str, Any] = {}, user_requirements_fields: dict[str, Any] = {}):
+    def _create_dynamic_response_model(self, extra_fields: dict[str, Any] = {}, user_requirements_fields: dict[str, Any] = {}, message_field_description=""):
         dynamic_fields = extra_fields or {}
         
         print("\033[34mIs plan exists:\033[0m", self._is_plan_exists())
@@ -410,7 +404,12 @@ class BaseAgent(BaseComponent, ABC):
         if is_waiting_for_approval:
             dynamic_fields['result_accepted'] = (bool, Field(..., description="True if the user explicitly confirms that he want to proceed with the result as is. False if the user asks any questions, requests clarifications, or indicates that he wants to adjust the result."))
             user_requirements_description += " If result_accepted is False then be sure to provide a new requirements and in 'summary' field include whole task request."
-            # user_requirements_description += " If result_accepted is False, in 'summary' field provide a summary of only the specific changes requested by the user. Avoid rephrasing, summarizing, or excluding details; include the requested changes verbatim. The summary should reflect exactly what the user has asked to modify or include, without altering or omitting any part of their request."
+
+        message_description = message_field_description if message_field_description else "Assistant message. Must exist if user_requirements_status is 'incomplete' or user_requirements is None. It is forbidden to return any social media content which user requests. Remember to include message if user_requirements is None."
+
+        if self.dependencies_message:
+            dynamic_fields['other_results_of_tasks_exists'] = (bool, Field(..., description="True if in history you see 'Here are the results of the tasks that you depend on:' otherwise False"))
+            message_description += " If 'other_results_of_tasks_exists' is True then ask user if he wants to use that context"
 
         # Create a new model with dynamic fields first, followed by the base fields
         response_model = create_model(
@@ -418,7 +417,7 @@ class BaseAgent(BaseComponent, ABC):
             **dynamic_fields,  # Insert dynamic fields first
             user_requirements_status=(Literal["incomplete", "changed", "approved", "unchanged"], Field(None, description="Status of the requirements. Can be 'changed' if the user modified requirements, 'approved' if they were accepted, 'unchanged' if nothing was changed, or 'incomplete' if the requirements are not gathered or missing information.")),
             user_requirements=(Optional[self._create_dynamic_user_requirements_response_model(user_requirements_fields, is_waiting_for_approval)], Field(None, description=user_requirements_description)),
-            message=(Optional[str], Field(None, description="Assistant message. Must exist if user_requirements_status is 'incomplete' or user_requirements is None. It is forbidden to return any social media content which user requests. Remember to include message if user_requirements is None")),
+            message=(Optional[str], Field(None, description=message_description)),
         )
         print("\033[33mResponse model fields:\033[0m")
         for field_name, field_info in response_model.model_fields.items():

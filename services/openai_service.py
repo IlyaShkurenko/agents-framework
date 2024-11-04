@@ -82,19 +82,20 @@ class OpenAIService:
 
         # If response_schema is provided, use the parsing method
         if response_schema:
-            # completion = await self.client.beta.chat.completions.parse(
-            #     model="gpt-4o-2024-08-06",  # Example model
-            #     messages=openai_messages,
-            #     response_format=response_schema
-            # )
-            print('before openai response')
-            # result = completion.choices[0].message.parsed
-            async for parsed_completion in openai_structured_outputs_stream(
-                model="gpt-4o-2024-08-06",
+            completion = await self.client.beta.chat.completions.parse(
+                model="gpt-4o-2024-08-06",  # Example model
                 messages=openai_messages,
                 response_format=response_schema
-            ):
-                result = parsed_completion
+            )
+            result = completion.choices[0].message.parsed
+            # print('before openai response')
+            # result = completion.choices[0].message.parsed
+            # async for parsed_completion in openai_structured_outputs_stream(
+            #     model="gpt-4o-2024-08-06",
+            #     messages=openai_messages,
+            #     response_format=response_schema
+            # ):
+            #     result = parsed_completion
                 # print("Current result field:", result)
         else:
             # Use the standard method if no schema is provided
@@ -106,8 +107,10 @@ class OpenAIService:
             
 				#save result to history
         if response_schema:
-            result = response_schema(**result) #to pedantic model
+            # result = response_schema(**result) #to pedantic model
+            # content = result.message if hasattr(result, 'message') and result.message else result.model_dump_json()
             content = result.message if hasattr(result, 'message') and result.message else result.model_dump_json()
+
         else:
             content = result
 

@@ -68,7 +68,6 @@ class Executor:
             if ("tool" in task["tool"] or task["tool"] == self.last_tool_name)
             and task.get("description") != "FROM_OTHER_AGENT"
         ]
-        print("\033[31mTool tasks:\033[0m", tool_tasks)
         if len(tool_tasks) > 0:
             futures = [self._process_tool_task(task) for task in tool_tasks]
             print("\033[31mTool tasks:\033[0m")
@@ -97,10 +96,6 @@ class Executor:
                 if all(dep in self.observations for dep in task["dependencies"]):
                     if self.observations.get(task["id"]):
                         continue 
-                    print('task id', task["id"])
-                    print('observations', self.observations)
-                    print('concrete result',self.observations.get(task["id"]))
-                    print('called agents', self.called_agents)
                     if task["tool"] in self.called_agents and not self.observations.get(task["id"]):
                         try:
                             print("\033[32mAgent was called before:\033[0m", task["tool"], task["id"])
@@ -148,12 +143,7 @@ class Executor:
                         except Exception as e:
                             print(f"\033[31mError:\033[0m {e}")
                     else:
-                        # Agent not called yet, call with dependencies
-                        # dependencies_results = self._collect_dependencies_results(task)
-                        # print("\033[33mDependencies results as arguments for first called agent:\033[0m", task["id"])
-                        # pprint(dependencies_results)
-                        await self._process_agent_task(task)
-                        return  # Exit after calling the agent
+                        return await self._process_agent_task(task)
 
     async def _process_agent_task(self, task: Dict[str, Any]):
         """
@@ -167,9 +157,9 @@ class Executor:
         print("\033[34mInvoking agent:\033[0m", task["tool"], task["id"])
         self.called_agents.add(task["tool"])
 
-        message = self._create_task_message(task)
+        message, dependencies_message = self._create_task_message(task)
 
-        await self.agent.process_agent_task(task["id"], task["tool"], message)
+        await self.agent.process_agent_task(task["id"], task["tool"], message, dependencies_message)
 
     async def _process_tool_task(self, task: Dict[str, Any]):
         """
@@ -198,7 +188,7 @@ class Executor:
             tool_name = task["tool"]
             tool = self.tools[tool_name]
             
-            message = self._create_task_message(task)
+            message, _ = self._create_task_message(task)
             print("\033[34mExecuting tool:\033[0m", tool_name, task_id)
 
             result = None
@@ -221,15 +211,17 @@ class Executor:
             print(e)
             print(f"Error executing tool {tool_name}: {str(e)}")
 
-    def _create_task_message(self, task: dict) -> str:
+    def _create_task_message(self, task: dict) -> tuple[str, str]:
         dependencies_results = self._collect_dependencies_results(task)  
         message = ""
+        dependencies_message = ""
         if dependencies_results.items():
-            message += (
+            dependencies_message = (
                 "\nHere are the results of the tasks that you depend on:\n" +
                 "".join(f"Task: {description} Result: {result}\n" for description, result in dependencies_results.items()) +
                 "\nUse them as a context for your task\n"
             )
+            message += dependencies_message
 
         task_args = task.get("arguments", [])
 
@@ -242,7 +234,7 @@ class Executor:
         message += arguments
         print("\033[33mArguments:\033[0m", message)
         
-        return message
+        return message, dependencies_message
     
     async def get_task_result(self, task_id: int) -> Optional[dict]:
         return await self.tasks_state_model.get_task_result(task_id)
@@ -273,19 +265,14 @@ class Executor:
                     "description": "FROM_OTHER_AGENT",
                     "dependencies": []
                 })
-            # self.agents_tasks_dependencies.append({
-            #     "id": task_id,
-            #     "tool": task_name,
-            #     "dependencies": []
-            # })
             print("\033[1;33mAdded agent task to dependencies:\033[0m", task_id)
-            print('After adding')
-            pprint(self.tasks)
+            # print('After adding')
+            # pprint(self.tasks)
         return self.tasks
 
     def set_child_agent_result(self, previous_agent_result):
-        print("\033[1;33mSet child agent result:\033[0m", previous_agent_result)
-        pprint(self.tasks)
+        # print("\033[1;33mSet child agent result:\033[0m", previous_agent_result)
+        # pprint(self.tasks)
         agent_task = next(
             (task for task in self.tasks if task["id"] == previous_agent_result["id"]), None
         )
@@ -293,11 +280,6 @@ class Executor:
         if agent_task:
             self.observations[agent_task["id"]] = previous_agent_result["result"]
             # asyncio.create_task(self.tasks_state_model.save_task_result(agent_task["id"], previous_agent_result["result"]))
-
-    # def agent_executed(self, agent_name: str):
-    #     print('agent executed', agent_name)
-    #     print('called agents', self.called_agents)
-    #     self.called_agents.remove(agent_name)
 
     def get_tasks_with_results(self) -> List[Dict[str, Any]]:
         """
@@ -402,28 +384,6 @@ class Executor:
         """
         return all(dep in self.observations for dep in dependencies)
 
-    # async def resume_execution(self, tasks: List[Dict[str, Any]] = None):
-    #     """
-    #     Resume the execution of tasks. If no tasks are currently loaded, 
-    #     restore tasks and observations from the database.
-    #     """
-    #     print("Resuming task execution...")
-    #     print('tasks', tasks)
-    #     if not tasks:
-    #         print("No tasks found to resume.")
-    #         return
-    #     self.tasks = tasks
-
-    #     state = await self.tasks_state_model.load_state()
-    #     # print('state', state)
-    #     tasks_results = state.get('tasks', [])
-    #     print('tasks results', tasks_results)
-    #     self.observations.update({task['id']: task['result'] for task in tasks_results})
-
-    #     print('observations', self.observations)
-
-    #     return await self.execute_plan(self.tasks)
-
     def get_execution_result(self, tools_results: Optional[List[dict[str, Any]]] = None) -> str:
         """
         Processes the results from tools and returns a response.
@@ -469,6 +429,3 @@ class Executor:
             return json.dumps(result, indent=2)
         except (TypeError, ValueError):
             return str(result)
-
-
-#No, i mean let's have only hashtags without caption or visual

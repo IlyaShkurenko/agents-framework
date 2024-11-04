@@ -25,8 +25,8 @@ class TasksStateModel:
 
     async def save_task_result(self, task_id: int, result: Union[dict, str, list[dict]]):
         state = await self.load_state()
-        print('state results save')
-        pprint(state['tasks'])
+        # print('state results save')
+        # pprint(state['tasks'])
         for task in state["tasks"]:
             if task["id"] == task_id:
                 task["result"] = result

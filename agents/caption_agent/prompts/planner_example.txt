@@ -20,7 +20,9 @@ Example 1:
 }
 ]
 
-Example 2 for update existing results:
+Example 2 for adjusting existing results:
+Re-plan based on new requirements:
+Make it more engaging
 [{
   "id": "32412461",
   "description": "Update the create_caption_tool prompt to make in more engaging",
@@ -38,5 +40,28 @@ Example 2 for update existing results:
   "tool": "join",
   "description": "Passing the results of caption creation for vacation to Bali for join analysis",
   "dependencies": ["32412461"],
+  "arguments": []
+}]
+
+Example 3 for adjusting existing results:
+Re-plan based on new requirements:
+Remove hashtags from the previous result
+[{
+  "id": "32412462",
+  "description": "Update the create_caption_tool prompt to remove hashtags from it",
+  "dependencies": [],
+  "tool": "create_hashtags_tool",
+  "arguments": [
+    {
+      "name": "prompt",
+      "value": "Adjust previous result to remove hashtags from it"
+    }
+  ]
+},
+{
+  "id": "32412463",
+  "tool": "join",
+  "description": "Passing the results of caption creation for vacation to Bali for join analysis",
+  "dependencies": ["32412462"],
   "arguments": []
 }]

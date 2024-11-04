@@ -108,7 +108,7 @@ class AgentStateModel:
             
             last_plan['tasks'] = tasks
             
-            print("\033[32mPlan updated:\033[0m", last_plan)
+            # print("\033[32mPlan updated:\033[0m", last_plan)
             await self.save_state()
         else:
             print("\033[31mNo plan exists to update\033[0m")
